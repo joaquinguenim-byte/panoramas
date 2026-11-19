@@ -4,11 +4,16 @@ import { requireUser } from "@/lib/auth";
 import { getT, type MsgKey } from "@/lib/i18n";
 import { AUDIENCES, CATEGORIES, CHAT_MODES, COMUNAS, JOIN_MODES, MAX_CAPACITY, MIN_CAPACITY } from "@/lib/constants";
 import ErrorNote from "@/components/ErrorNote";
+import IdeaCard from "@/components/IdeaCard";
+import { ideaByKey, suggestIdeas } from "@/lib/ideas";
 
-export default async function NewEvent({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function NewEvent({ searchParams }: { searchParams: Promise<{ error?: string; idea?: string }> }) {
+  const { error, idea: ideaKey } = await searchParams;
   const user = await requireUser("/events/new");
-  const { t } = await getT();
+  const { t, locale } = await getT();
+  const idea = ideaByKey(ideaKey);
+  const it = idea?.[locale];
+  const suggestions = idea ? [] : await suggestIdeas(user, 3);
   if (!user.verifiedAt)
     return (
       <div className="card mx-auto max-w-md text-center">
@@ -37,19 +42,35 @@ export default async function NewEvent({ searchParams }: { searchParams: Promise
       <h1 className="text-3xl font-extrabold">{t("create.title")}</h1>
       <p className="mb-6 mt-2 text-sm text-muted">{t("create.intro")}</p>
       <ErrorNote error={error} />
+      {it && <p className="mb-4 rounded-xl bg-sun/10 px-4 py-3 text-sm text-sun-dark">💡 {t("ideas.prefilled", { title: it.title })}</p>}
+      {suggestions.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-bold">{t("ideas.cta")}</h2>
+            <Link href="/ideas" className="text-sm font-semibold text-sun">
+              {t("ideas.more")} →
+            </Link>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {suggestions.map((s) => (
+              <IdeaCard key={s.idea.key} s={s} t={t} locale={locale} compact />
+            ))}
+          </div>
+        </section>
+      )}
       <form action={createEvent} className="card space-y-5">
         <div>
           <label className="label">{t("create.fTitle")}</label>
-          <input className="input" name="title" required minLength={3} maxLength={100} />
+          <input className="input" name="title" defaultValue={it?.title} required minLength={3} maxLength={100} />
         </div>
         <div>
           <label className="label">{t("create.fDescription")}</label>
-          <textarea className="input min-h-28" name="description" required minLength={10} maxLength={2000} />
+          <textarea className="input min-h-28" name="description" defaultValue={it?.description} required minLength={10} maxLength={2000} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">{t("create.fCategory")}</label>
-            <select className="input" name="category">
+            <select className="input" name="category" defaultValue={idea?.category}>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
                   {t(`category.${c}` as MsgKey)}
@@ -71,7 +92,7 @@ export default async function NewEvent({ searchParams }: { searchParams: Promise
           </div>
           <div>
             <label className="label">{t("create.fCapacity", { max: MAX_CAPACITY })}</label>
-            <input className="input" type="number" name="capacity" min={MIN_CAPACITY} max={MAX_CAPACITY} defaultValue={6} required />
+            <input className="input" type="number" name="capacity" min={MIN_CAPACITY} max={MAX_CAPACITY} defaultValue={idea?.capacity ?? 6} required />
           </div>
         </div>
         <div>
@@ -84,11 +105,11 @@ export default async function NewEvent({ searchParams }: { searchParams: Promise
         </div>
         <div>
           <label className="label">{t("create.fCostNote")}</label>
-          <input className="input" name="costNote" maxLength={200} />
+          <input className="input" name="costNote" defaultValue={it?.costNote} maxLength={200} />
         </div>
         <div>
           <p className="label">{t("create.fJoinMode")}</p>
-          <Radio name="joinMode" values={JOIN_MODES} prefix="joinMode" def="review" />
+          <Radio name="joinMode" values={JOIN_MODES} prefix="joinMode" def={idea?.joinMode ?? "review"} />
         </div>
         <div>
           <p className="label">{t("create.fAudience")}</p>

@@ -10,6 +10,7 @@ export default async function Signup({ searchParams }: { searchParams: Promise<{
   max.setFullYear(max.getFullYear() - 18);
   return (
     <div className="mx-auto max-w-sm">
+      <p className="mb-1 text-sm font-semibold text-sun">{t("auth.step")}</p>
       <h1 className="text-3xl font-extrabold">{t("auth.signupTitle")}</h1>
       <p className="mb-6 mt-2 text-sm text-muted">{t("auth.friendsNotDating")}</p>
       <ErrorNote error={error} />

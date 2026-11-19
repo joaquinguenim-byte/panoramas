@@ -32,3 +32,19 @@ test("Chile local time", () => {
   // July: UTC-4
   assert.equal(chileLocalToDate("2026-07-10T08:00")!.toISOString(), "2026-07-10T12:00:00.000Z");
 });
+
+test("every plan idea passes the content rules", async () => {
+  const { IDEAS } = await import("../src/lib/ideas");
+  for (const i of IDEAS)
+    for (const l of ["es", "en"] as const) {
+      const r = checkContent(i[l].title, i[l].description, i[l].costNote);
+      assert.equal(r.ok, true, `${i.key}/${l}`);
+    }
+});
+
+test("ID document type sniffing", async () => {
+  const { sniffType } = await import("../src/lib/idDocs");
+  assert.equal(sniffType(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])), "jpg");
+  assert.equal(sniffType(Buffer.from("%PDF-1.7 ......")), "pdf");
+  assert.equal(sniffType(Buffer.from("<html><script>..")), null);
+});

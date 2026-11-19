@@ -31,6 +31,10 @@ model User {
   idType       String?  // "rut" | "passport" | "foreign_id"
   idNumber     String?  @unique
   verifiedAt   DateTime?
+  // Photo of the ID document, uploaded at sign-up. Stored privately (never under /public).
+  idDocPath       String?
+  idDocUploadedAt DateTime?
+  idDocStatus     String?  // "pending_review" | "approved" | "rejected" (manual / KYC review)
 
   createdAt    DateTime @default(now())
 

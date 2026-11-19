@@ -15,6 +15,8 @@ npm run db:setup     # creates the SQLite DB and loads demo data
 npm run dev          # http://localhost:3000
 ```
 
+Demo data includes vegan / animal-friendly plans such as *Voluntariado Santuario Clafiria + Almuerzo Vegano*.
+
 Demo accounts (password `panoramas123`): `demo@demo.cl`, `camila@demo.cl`, `diego@demo.cl`, `vale@demo.cl`, `tomas@demo.cl`.
 
 Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
@@ -24,12 +26,13 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 | Area | How it works |
 | --- | --- |
 | Accounts | Email + password, 18+ enforced from birth date. |
-| Verification | Chilean RUT (módulo 11 check digit) or passport / foreign ID, one account per document. **Stub:** real document + selfie KYC still to plug in (`src/lib/verification.ts → verifyIdentity`). Must be verified to create or join. |
+| Verification | Step 2 of sign-up: Chilean RUT (módulo 11 check digit) or passport / foreign ID, one account per document, plus a required photo of the ID (JPG/PNG/HEIC/PDF, 6 MB, type checked from file bytes). Photos are stored privately in `storage/id-docs/` (git-ignored, never served) with status `pending_review`. **Stub:** access is granted on upload; real document + selfie KYC still to plug in (`src/lib/verification.ts`, `src/lib/idDocs.ts`). Must be verified to create or join. |
 | Plans | Title, category, comuna, date, capacity (2–12 incl. host), cost note ("cada uno paga lo suyo"). Host must confirm they're not the provider and receive no money, and that it's not a date / adult / illegal / animal-abuse plan. |
 | Join mode | Per plan: *entrada directa* (instant) or *el anfitrión revisa* (host accepts/declines applications). |
 | Location privacy | Only the comuna is public. Exact place shows once accepted, unless the host marks "the place is the plan" (concert, play). |
 | Audiences | Open, women only, LGBTQ+ only, LGBTQ+ welcome, vegans only. Based on self-declared profile fields for now. |
 | Sorpréndeme | Picks an upcoming plan you can join that's furthest from your bubble: categories you've never joined or listed, outside your comuna, hosts you've never met. Explains why ("nunca has ido a algo de Playa y surf") and offers another. |
+| ¿Qué organizo? | Plan ideas at `/ideas` and on top of the create form. Ranked by your interests, categories nobody hosts near you, the season (surf in summer, snow in winter) and vegan diet, plus one idea outside your bubble. "Usar esta idea" pre-fills the form. Ideas live in `src/lib/ideas.ts`. |
 | Chat & contacts | Host chooses: no chat, before, after, or both. Optional contact sharing among the group after the plan. |
 | Safety | Keyword screen for dating / adult / illegal / animal-abuse content (ES + EN), report button, auto-hide after 3 reports. |
 | Languages | Spanish first, English toggle (`src/lib/i18n`). |
@@ -42,7 +45,7 @@ The pilot uses **SQLite** so it runs with zero setup. To deploy (e.g. Vercel), s
 
 ## Next steps
 
-- Real identity verification (document + selfie) and verified gender for women-only plans.
+- Move ID photos to a private encrypted bucket and add a review screen; then real KYC (document + selfie) and verified gender for women-only plans.
 - Email/WhatsApp notifications (accepted, new message, reminder).
 - Post-event "would meet again" feedback to tune Sorpréndeme and flag bad actors.
 - Moderation dashboard for reports.

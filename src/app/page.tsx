@@ -35,6 +35,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             </Link>
           </div>
           <p className="mt-3 text-xs text-white/60">{t("surprise.hint")}</p>
+          <Link href="/ideas" className="mt-4 inline-block text-sm font-semibold text-white underline decoration-sun underline-offset-4">
+            {t("ideas.cta")}
+          </Link>
         </div>
       </section>
 

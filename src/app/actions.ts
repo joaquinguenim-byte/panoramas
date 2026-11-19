@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkPassword, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
 import { isAdult, normalizeId, verifyIdentity, type IdType } from "@/lib/verification";
+import { saveIdDoc } from "@/lib/idDocs";
 import { checkContent, REPORT_HIDE_THRESHOLD } from "@/lib/moderation";
 import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
 import { chileLocalToDate } from "@/lib/time";
@@ -58,7 +59,20 @@ export async function verify(formData: FormData) {
   if (!isAdult(user.birthDate)) fail("/verify", "underage");
   const other = await db.user.findUnique({ where: { idNumber: normalized } });
   if (other && other.id !== user.id) fail("/verify", "idTaken");
-  await db.user.update({ where: { id: user.id }, data: { idType: type, idNumber: normalized, verifiedAt: new Date() } });
+  const doc = await saveIdDoc(user.id, formData.get("idDoc") as File | null);
+  if (!doc.ok) fail("/verify", doc.error);
+  await db.user.update({
+    where: { id: user.id },
+    data: {
+      idType: type,
+      idNumber: normalized,
+      idDocPath: doc.relPath,
+      idDocUploadedAt: new Date(),
+      idDocStatus: "pending_review",
+      // PILOT: access is granted on upload; the document is reviewed afterwards.
+      verifiedAt: new Date(),
+    },
+  });
   redirect("/profile?welcome=1");
 }
 

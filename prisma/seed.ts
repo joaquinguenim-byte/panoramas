@@ -20,7 +20,7 @@ async function main() {
   const passwordHash = await bcrypt.hash("panoramas123", 10);
   const mk = (email: string, name: string, extra: Record<string, unknown> = {}) =>
     db.user.create({
-      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
+      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), idDocStatus: "approved", idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
     });
 
   const camila = await mk("camila@demo.cl", "Camila Rojas", { gender: "woman", comuna: "Providencia", interests: "books,culture", bio: "Lectora compulsiva y fan del teatro.", contact: "@cami.lee" });
@@ -40,6 +40,11 @@ async function main() {
     { hostId: diego.id, title: "Trekking al Cerro Manquehue", description: "Subida de ~3 horas. Llevar agua y bloqueador. Ritmo tranquilo, conversación garantizada.", category: "outdoors", comuna: "Vitacura", venue: "Inicio sendero Club de Golf Santa Rosa", startsAt: inDays(2, 8), capacity: 10, joinMode: "instant", chatMode: "both", audience: "lgbtq_friendly", costNote: "" },
     { hostId: tomas.id, title: "Noche de juegos de mesa", description: "Catan, Dixit y lo que traigan. Ideal para conocer gente sin la presión de conversar todo el rato.", category: "games", comuna: "Valparaíso", venue: "Bar La Playa", startsAt: inDays(8, 20), capacity: 8, joinMode: "instant", chatMode: "after", costNote: "Lo que consumas" },
     { hostId: camila.id, title: "Intercambio de idiomas español-inglés", description: "Media hora en español, media en inglés. Para chilenos y extranjeros que quieran practicar.", category: "languages", comuna: "Providencia", venue: "Plaza Las Lilas", startsAt: inDays(10, 19), capacity: 10, joinMode: "instant", chatMode: "none", costNote: "" },
+    // Vegan / animal-friendly plans (open to everyone, so non-vegans discover them too)
+    { hostId: vale.id, title: "Voluntariado Santuario Clafiria + Almuerzo Vegano", description: "Mañana ayudando en el santuario: limpiar, alimentar y conocer a los animales rescatados. Después, almuerzo vegano compartido ahí mismo. Ropa cómoda y zapatos que se puedan ensuciar.", category: "volunteering", comuna: "Cajón del Maipo", venue: "Santuario Clafiria (punto de encuentro: Metro Bellavista de La Florida)", startsAt: inDays(11, 9), capacity: 8, joinMode: "review", chatMode: "both", shareContacts: true, costNote: "Aporte al almuerzo ~$6.000 + bencina compartida" },
+    { hostId: vale.id, title: "Feria vegana + picnic en el Parque Bustamante", description: "Recorremos los puestos, cada uno compra algo rico y armamos un picnic para compartir.", category: "food", comuna: "Providencia", venue: "Parque Bustamante, frente a la pileta", startsAt: inDays(12, 12), capacity: 10, joinMode: "instant", chatMode: "both", costNote: "Lo que compres en la feria" },
+    { hostId: camila.id, title: "Taller: pastel de choclo vegano", description: "Cocinamos juntos una versión vegana del clásico chileno y nos lo comemos. Sin experiencia necesaria.", category: "food", comuna: "Ñuñoa", venue: "Cocina comunitaria Villa Olímpica", startsAt: inDays(13, 18), capacity: 6, joinMode: "review", chatMode: "both", audience: "lgbtq_friendly", costNote: "Ingredientes ~$5.000 por persona" },
+    { hostId: tomas.id, title: "Limpieza de playa + completos veganos", description: "Dos horas limpiando la playa con guantes y bolsas, después completos veganos frente al mar.", category: "volunteering", comuna: "Concón", venue: "Playa Amarilla", startsAt: inDays(14, 10), capacity: 12, joinMode: "instant", chatMode: "after", shareContacts: true, costNote: "Completos ~$4.000" },
   ];
   for (const e of events) await db.event.create({ data: { ...pledge, ...e } });
 
