@@ -1,0 +1,115 @@
+// Panoramas data model.
+// Pilot uses SQLite so the app runs with zero setup. To move to Postgres
+// (e.g. Supabase / Neon), change `provider` to "postgresql" and set DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  birthDate    DateTime
+  // "woman" | "man" | "nonbinary" | "unspecified" (self-declared, used for women-only events)
+  gender       String   @default("unspecified")
+  lgbtq        Boolean  @default(false) // self-declared, used for LGBTQ+-only events
+  vegan        Boolean  @default(false) // self-declared, used for vegan-only events
+  bio          String   @default("")
+  comuna       String   @default("")
+  interests    String   @default("") // comma-separated category keys
+  contact      String   @default("") // what the user chooses to share (IG, phone...) when hosts allow it
+  locale       String   @default("es")
+
+  // Identity verification (STUB: format + check digit only; see src/lib/verification.ts)
+  idType       String?  // "rut" | "passport" | "foreign_id"
+  idNumber     String?  @unique
+  verifiedAt   DateTime?
+
+  createdAt    DateTime @default(now())
+
+  sessions      Session[]
+  hostedEvents  Event[]         @relation("HostedEvents")
+  participations Participation[]
+  messages      Message[]
+  reports       Report[]
+}
+
+model Session {
+  id        String   @id // random token stored in cookie
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  hostId      String
+  host        User     @relation("HostedEvents", fields: [hostId], references: [id], onDelete: Cascade)
+  title       String
+  description String
+  category    String
+  comuna      String           // always public: only the area is shown by default
+  venue       String   @default("") // exact place, revealed only to accepted attendees...
+  venuePublic Boolean  @default(false) // ...unless the place IS the plan (a concert, a play)
+  startsAt    DateTime
+  capacity    Int              // includes the host; small groups only (max 12)
+  joinMode    String   @default("review")   // "instant" | "review"
+  chatMode    String   @default("both")     // "none" | "before" | "after" | "both"
+  shareContacts Boolean @default(false)     // host lets attendees see each other's contact after the event
+  audience    String   @default("open")     // "open" | "women_only" | "lgbtq_only" | "lgbtq_friendly" | "vegan_only"
+  costNote    String   @default("")         // what each person pays on their own
+  hostPledgeAt DateTime                     // host confirmed: not the provider, no money received
+  status      String   @default("active")   // "active" | "cancelled" | "hidden"
+  createdAt   DateTime @default(now())
+
+  participations Participation[]
+  messages    Message[]
+  reports     Report[]
+
+  @@index([startsAt])
+  @@index([comuna])
+}
+
+model Participation {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    String   @default("pending") // "pending" | "accepted" | "rejected" | "left"
+  note      String   @default("")        // why I'd like to join (review mode)
+  viaSurprise Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  eventId    String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  reporterId String
+  reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  reason     String
+  createdAt  DateTime @default(now())
+
+  @@unique([eventId, reporterId])
+}
