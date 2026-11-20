@@ -22,7 +22,7 @@ async function main() {
   const passwordHash = await bcrypt.hash("panoramas123", 10);
   const mk = (email: string, name: string, extra: Record<string, unknown> = {}) =>
     db.user.create({
-      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), idDocStatus: "approved", idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
+      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), emailVerifiedAt: new Date(), idDocStatus: "approved", idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
     });
 
   const camila = await mk("camila@demo.cl", "Camila Rojas", { gender: "woman", comuna: "Providencia", interests: "books,culture", bio: "Lectora compulsiva y fan del teatro.", contact: "@cami.lee" });

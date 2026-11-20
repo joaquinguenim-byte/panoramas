@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { nextVerifyStep } from "@/lib/verification";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
@@ -261,9 +262,9 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           {t("event.mustLogin")}
         </Link>
       );
-    if (!user.verifiedAt)
+    if (nextVerifyStep(user))
       return (
-        <Link href="/verify" className="btn-primary w-full">
+        <Link href={nextVerifyStep(user)!} className="btn-primary w-full">
           {t("event.mustVerify")}
         </Link>
       );

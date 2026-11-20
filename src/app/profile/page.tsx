@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { logout, updateProfile } from "@/app/actions";
+import { logout, logoutEverywhere, updateProfile } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { getT, type MsgKey } from "@/lib/i18n";
 import { CATEGORIES, CATEGORY_EMOJI, COMUNAS, GENDERS } from "@/lib/constants";
 import ErrorNote from "@/components/ErrorNote";
 
-export default async function Profile({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
-  const { error, saved } = await searchParams;
+export default async function Profile({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string; passwordReset?: string }> }) {
+  const { error, saved, passwordReset } = await searchParams;
   const user = await requireUser("/profile");
   const { t } = await getT();
   const interests = new Set(user.interests.split(","));
@@ -23,6 +23,7 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
         )}
       </p>
       <ErrorNote error={error} />
+      {passwordReset && <p className="mb-4 rounded-xl bg-sea/10 px-4 py-3 text-sm text-sea">{t("reset.done")}</p>}
       {saved && <p className="mb-4 rounded-xl bg-sea/10 px-4 py-3 text-sm text-sea">{t("profile.saved")}</p>}
       <form action={updateProfile} className="card space-y-5">
         <div>
@@ -78,9 +79,14 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
         </div>
         <button className="btn-primary w-full">{t("profile.save")}</button>
       </form>
-      <form action={logout} className="mt-6 text-center">
-        <button className="text-sm text-muted underline">{t("nav.logout")}</button>
-      </form>
+      <div className="mt-6 flex flex-wrap justify-center gap-4">
+        <form action={logout}>
+          <button className="text-sm text-muted underline">{t("nav.logout")}</button>
+        </form>
+        <form action={logoutEverywhere}>
+          <button className="text-sm text-muted underline">{t("profile.logoutEverywhere")}</button>
+        </form>
+      </div>
     </div>
   );
 }

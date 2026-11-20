@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkPassword, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
-import { isAdult, normalizeId, verifyIdentity, type IdType } from "@/lib/verification";
+import { isAdult, nextVerifyStep, normalizeId, verifyIdentity, type IdType } from "@/lib/verification";
+import { issueToken, consumeToken, peekToken } from "@/lib/tokens";
+import { sendEmail, appUrl, layout } from "@/lib/email";
+import { clientIp, hit } from "@/lib/rateLimit";
+import { translator, type Locale } from "@/lib/i18n";
 import { deleteIdDoc, saveIdDoc } from "@/lib/idDocs";
 import { REJECT_REASONS, requireStaff } from "@/lib/staff";
 import { canPost, canSeeEvent, COMMUNITY_KINDS, myCommunityIds, slugify, WHO_CAN_POST } from "@/lib/communities";
@@ -19,33 +23,108 @@ const oneOf = <T extends readonly string[]>(list: T, v: string, fallback: T[numb
   (list as readonly string[]).includes(v) ? (v as T[number]) : fallback;
 const safeNext = (n: string) => (n.startsWith("/") && !n.startsWith("//") ? n : "/");
 
+function mustBeVerified(u: { emailVerifiedAt: Date | null; verifiedAt: Date | null }) {
+  const step = nextVerifyStep(u);
+  if (step) redirect(step);
+}
+
 function fail(path: string, error: string): never {
   const sep = path.includes("?") ? "&" : "?";
   redirect(`${path}${sep}error=${error}`);
 }
 
+async function sendVerificationEmail(user: { id: string; email: string; name: string; locale: string }) {
+  const t = translator((user.locale === "en" ? "en" : "es") as Locale);
+  const url = appUrl(`/verify-email/${await issueToken(user.id, "verify_email")}`);
+  const paragraphs = [t("email.hi", { name: user.name }), t("email.verify.body")];
+  await sendEmail({
+    to: user.email,
+    subject: t("email.verify.subject"),
+    text: `${paragraphs.join("\n\n")}\n\n${url}\n\n${t("email.footer")}`,
+    html: layout({ paragraphs, cta: { label: t("email.verify.cta"), url }, footer: t("email.footer") }),
+  });
+}
+
 export async function signup(formData: FormData) {
+  if (!(await hit("signupIp", await clientIp()))) fail("/signup", "tooMany");
   const email = s(formData, "email").toLowerCase();
   const password = s(formData, "password");
   const name = s(formData, "name");
   const birth = new Date(s(formData, "birthDate"));
-  if (!/^\S+@\S+\.\S+$/.test(email) || password.length < 8 || name.length < 2 || isNaN(+birth)) fail("/signup", "generic");
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 200 || password.length < 8 || password.length > 200 || name.length < 2 || isNaN(+birth))
+    fail("/signup", "generic");
   if (!isAdult(birth)) fail("/signup", "underage");
   if (await db.user.findUnique({ where: { email } })) fail("/signup", "emailTaken");
   const locale = (await cookies()).get("locale")?.value === "en" ? "en" : "es";
   const user = await db.user.create({
-    data: { email, name, birthDate: birth, passwordHash: await hashPassword(password), locale },
+    data: { email, name: name.slice(0, 60), birthDate: birth, passwordHash: await hashPassword(password), locale },
   });
+  await sendVerificationEmail(user).catch((e) => console.error("verification email failed", e));
   await createSession(user.id);
   redirect("/verify");
 }
 
 export async function login(formData: FormData) {
   const email = s(formData, "email").toLowerCase();
+  const next = safeNext(s(formData, "next"));
+  const ok = (await hit("loginIp", await clientIp())) && (await hit("loginEmail", email));
+  if (!ok) fail(`/login?next=${encodeURIComponent(next)}`, "tooMany");
   const user = await db.user.findUnique({ where: { email } });
-  if (!user || !(await checkPassword(s(formData, "password"), user.passwordHash))) fail("/login", "badLogin");
+  if (!user || !(await checkPassword(s(formData, "password"), user.passwordHash))) fail(`/login?next=${encodeURIComponent(next)}`, "badLogin");
   await createSession(user.id);
-  redirect(safeNext(s(formData, "next")));
+  redirect(next);
+}
+
+export async function resendVerification() {
+  const user = await requireUser("/verify-email");
+  if (user.emailVerifiedAt) redirect("/verify");
+  if (!(await hit("verifyEmailResend", user.id))) fail("/verify-email", "tooMany");
+  await sendVerificationEmail(user);
+  redirect("/verify-email?sent=1");
+}
+
+/** Always answers the same way so nobody can learn which emails have an account. */
+export async function requestPasswordReset(formData: FormData) {
+  const email = s(formData, "email").toLowerCase().slice(0, 200);
+  if (!(await hit("resetIp", await clientIp()))) fail("/reset", "tooMany");
+  const user = email && (await hit("resetEmail", email)) ? await db.user.findUnique({ where: { email } }) : null;
+  if (user) {
+    const t = translator((user.locale === "en" ? "en" : "es") as Locale);
+    const url = appUrl(`/reset/${await issueToken(user.id, "reset_password")}`);
+    const paragraphs = [t("email.hi", { name: user.name }), t("email.reset.body")];
+    await sendEmail({
+      to: user.email,
+      subject: t("email.reset.subject"),
+      text: `${paragraphs.join("\n\n")}\n\n${url}\n\n${t("email.reset.ignore")}`,
+      html: layout({ paragraphs, cta: { label: t("email.reset.cta"), url }, footer: t("email.reset.ignore") }),
+    }).catch((e) => console.error("reset email failed", e));
+  }
+  redirect("/reset?sent=1");
+}
+
+export async function resetPassword(formData: FormData) {
+  const token = s(formData, "token");
+  const password = s(formData, "password");
+  if (password.length < 8 || password.length > 200) fail(`/reset/${token}`, "shortPassword");
+  if (password !== s(formData, "confirm")) fail(`/reset/${token}`, "passwordMismatch");
+  if (!(await peekToken(token, "reset_password"))) fail("/reset", "badToken");
+  const userId = await consumeToken(token, "reset_password");
+  if (!userId) fail("/reset", "badToken");
+  await db.user.update({
+    where: { id: userId },
+    // Clicking the emailed link also proves the email address.
+    data: { passwordHash: await hashPassword(password), emailVerifiedAt: new Date() },
+  });
+  await db.session.deleteMany({ where: { userId } }); // sign out everywhere else
+  await createSession(userId);
+  redirect("/profile?passwordReset=1");
+}
+
+export async function logoutEverywhere() {
+  const user = await requireUser("/profile");
+  await db.session.deleteMany({ where: { userId: user.id } });
+  await destroySession();
+  redirect("/login");
 }
 
 export async function logout() {
@@ -55,6 +134,7 @@ export async function logout() {
 
 export async function verify(formData: FormData) {
   const user = await requireUser("/verify");
+  if (!(await hit("idUpload", user.id))) fail("/verify", "tooMany");
   const type = oneOf(["rut", "passport", "foreign_id"] as const, s(formData, "idType"), "rut") as IdType;
   const normalized = normalizeId(type, s(formData, "idNumber"));
   if (!normalized || !(await verifyIdentity(type, normalized))) fail("/verify", "badId");
@@ -138,7 +218,8 @@ export async function updateProfile(formData: FormData) {
 
 export async function createEvent(formData: FormData) {
   const user = await requireUser("/events/new");
-  if (!user.verifiedAt) redirect("/verify");
+  mustBeVerified(user);
+  if (!(await hit("createEvent", user.id))) fail("/events/new", "tooMany");
   const title = s(formData, "title").slice(0, 100);
   const description = s(formData, "description").slice(0, 2000);
   const venue = s(formData, "venue").slice(0, 200);
@@ -193,7 +274,8 @@ export async function createEvent(formData: FormData) {
 export async function joinEvent(formData: FormData) {
   const id = s(formData, "eventId");
   const user = await requireUser(`/events/${id}`);
-  if (!user.verifiedAt) redirect("/verify");
+  mustBeVerified(user);
+  if (!(await hit("join", user.id))) fail(`/events/${id}`, "tooMany");
   const event = await db.event.findUnique({ where: { id }, include: { participations: true } });
   if (!event || event.status !== "active" || event.startsAt <= new Date() || event.hostId === user.id) fail(`/events/${id}`, "generic");
   if (!eligibleFor(event, user)) fail(`/events/${id}`, "generic");
@@ -242,6 +324,7 @@ export async function sendMessage(formData: FormData) {
   const id = s(formData, "eventId");
   const user = await requireUser(`/events/${id}`);
   const body = s(formData, "body").slice(0, 1000);
+  if (!(await hit("message", user.id))) fail(`/events/${id}`, "tooMany");
   const event = await db.event.findUnique({ where: { id }, include: { participations: true } });
   if (!event || !body) redirect(`/events/${id}`);
   const member = event.hostId === user.id || event.participations.some((p) => p.userId === user.id && p.status === "accepted");
@@ -254,6 +337,7 @@ export async function reportEvent(formData: FormData) {
   const id = s(formData, "eventId");
   const user = await requireUser(`/events/${id}`);
   const reason = s(formData, "reason").slice(0, 500) || "-";
+  if (!(await hit("report", user.id))) fail(`/events/${id}`, "tooMany");
   await db.report.upsert({
     where: { eventId_reporterId: { eventId: id, reporterId: user.id } },
     create: { eventId: id, reporterId: user.id, reason },
@@ -268,7 +352,8 @@ export async function reportEvent(formData: FormData) {
 
 export async function createCommunity(formData: FormData) {
   const user = await requireUser("/communities/new");
-  if (!user.verifiedAt) redirect("/verify");
+  mustBeVerified(user);
+  if (!(await hit("createCommunity", user.id))) fail("/communities/new", "tooMany");
   const name = s(formData, "name").slice(0, 80);
   const description = s(formData, "description").slice(0, 1000);
   if (name.length < 3 || description.length < 10) fail("/communities/new", "generic");
@@ -293,7 +378,7 @@ export async function createCommunity(formData: FormData) {
 export async function joinCommunity(formData: FormData) {
   const slug = s(formData, "slug");
   const user = await requireUser(`/communities/${slug}`);
-  if (!user.verifiedAt) redirect("/verify");
+  mustBeVerified(user);
   const c = await db.community.findUnique({ where: { slug } });
   if (!c) redirect("/communities");
   const status = c.kind === "open" ? "active" : "pending";

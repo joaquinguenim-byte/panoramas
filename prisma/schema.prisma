@@ -16,6 +16,7 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  emailVerifiedAt DateTime?
   name         String
   birthDate    DateTime
   // "woman" | "man" | "nonbinary" | "unspecified" (self-declared, used for women-only events)
@@ -46,6 +47,7 @@ model User {
   createdAt    DateTime @default(now())
 
   sessions      Session[]
+  tokens        AuthToken[]
   hostedEvents  Event[]         @relation("HostedEvents")
   participations Participation[]
   messages      Message[]
@@ -159,4 +161,26 @@ model Report {
   createdAt  DateTime @default(now())
 
   @@unique([eventId, reporterId])
+}
+
+// One-time links sent by email. Only the SHA-256 of the token is stored.
+model AuthToken {
+  id        String    @id // sha256(token)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String    // "verify_email" | "reset_password"
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, purpose])
+}
+
+// Fixed-window rate limiting without extra infrastructure.
+model RateHit {
+  id        BigInt   @id @default(autoincrement())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
 }

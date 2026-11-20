@@ -21,6 +21,9 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
           <input className="input" name="password" type="password" required autoComplete="current-password" />
         </div>
         <button className="btn-primary w-full">{t("nav.login")}</button>
+        <Link href="/reset" className="block text-center text-sm text-muted underline">
+          {t("reset.link")}
+        </Link>
       </form>
       <p className="mt-4 text-center text-sm text-muted">
         {t("auth.noAccount")}{" "}

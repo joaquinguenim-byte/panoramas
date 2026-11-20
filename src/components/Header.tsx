@@ -52,6 +52,14 @@ export default async function Header() {
           <LangToggle next={locale === "es" ? "en" : "es"} label={locale === "es" ? "EN" : "ES"} title={t("common.lang")} />
         </nav>
       </div>
+      {user && !user.emailVerifiedAt && (
+        <div className="border-t border-line bg-sun/10 px-4 py-2 text-center text-sm">
+          {t("verifyEmail.banner", { email: user.email })}{" "}
+          <Link href="/verify-email" className="font-semibold text-sun underline">
+            {t("verifyEmail.bannerLink")}
+          </Link>
+        </div>
+      )}
     </header>
   );
 }
