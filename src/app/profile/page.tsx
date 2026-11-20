@@ -87,6 +87,14 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
           <button className="text-sm text-muted underline">{t("profile.logoutEverywhere")}</button>
         </form>
       </div>
+      <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm">
+        <a href="/account/export" className="text-muted underline">
+          {t("account.export")}
+        </a>
+        <Link href="/account/delete" className="text-red-700 underline">
+          {t("account.deleteTitle")}
+        </Link>
+      </div>
     </div>
   );
 }

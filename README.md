@@ -45,7 +45,8 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 | Communities | `/communities`: open (join instantly) or closed (admins approve requests, with a note). Each community chooses who can publish plans (any member or admins only). Plans can be published *as* a community and be **members only** (hidden from feed, Sorpréndeme and direct links for non-members) or **open to everyone** (shown with the community badge). Admins accept/reject requests, promote admins and remove members. Not verified as official organizations yet. |
 | Chat & contacts | Host chooses: no chat, before, after, or both. Optional contact sharing among the group after the plan. |
 | Abuse limits | Per-IP and per-account rate limits on login, sign-up, password reset, ID upload, creating plans and communities, joining, messages and reports (`src/lib/rateLimit.ts`, stored in Postgres). Security headers (HSTS, no framing, nosniff) in `next.config.ts`. |
-| Safety | Keyword screen for dating / adult / illegal / animal-abuse content (ES + EN), report button, auto-hide after 3 reports. |
+| Safety | Keyword screen for dating / adult / illegal / animal-abuse content (ES + EN). Report a plan (auto-hidden after 3 reports) or a **person** (from their profile at `/users/[id]`, reached by tapping a name in a plan), with a reason and private details. **Block** a person: you never see each other's plans, can't be accepted into the same plan, and they're removed from your upcoming plans. Staff work the queue at `/admin/reports` (dismiss, hide/restore a plan, suspend/reactivate a person; suspension signs them out and cancels their upcoming plans) and every decision is in `/admin/audit`. |
+| Your data | Download everything as JSON (`/account/export`) and delete your account (`/account/delete`, password + typing ELIMINAR): profile, plans, messages and ID photo go; upcoming hosted plans are cancelled; communities you created stay. |
 | Languages | Spanish first, English toggle (`src/lib/i18n`). |
 
 ## Stack
@@ -59,6 +60,5 @@ Database is **Postgres** with Prisma migrations. To deploy (e.g. Vercel + Supaba
 - Real KYC (document + selfie) and verified gender for women-only plans.
 - Email/WhatsApp notifications (accepted, new message, reminder).
 - Post-event "would meet again" feedback to tune Sorpréndeme and flag bad actors.
-- Moderation dashboard for reports.
 - Verified / official communities (e.g. a society confirms its admins) and member import by email domain or list.
 - Later: pooled payments with "minimum met or refund".

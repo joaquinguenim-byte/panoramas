@@ -1,4 +1,5 @@
 import type { Event, User } from "@prisma/client";
+import { blockedIds, hostFilter } from "./safety";
 import { db } from "./db";
 import { myCommunityIds, visibleTo } from "./communities";
 
@@ -42,9 +43,9 @@ export type SurpriseReason =
  * We pick randomly among the best-scoring candidates so it stays a surprise.
  */
 export async function pickSurprise(user: User | null, excludeId?: string) {
-  const ids = await myCommunityIds(user?.id);
+  const [ids, blocked] = await Promise.all([myCommunityIds(user?.id), blockedIds(user?.id)]);
   const candidates = await db.event.findMany({
-    where: { ...upcomingWhere(), ...visibleTo(ids), ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { ...upcomingWhere(), ...visibleTo(ids), ...hostFilter(blocked), ...(excludeId ? { id: { not: excludeId } } : {}) },
     include: { participations: true },
   });
 
@@ -54,6 +55,8 @@ export async function pickSurprise(user: User | null, excludeId?: string) {
     return e ? { event: e, reason: { kind: "random" } as SurpriseReason } : null;
   }
 
+  const avoid = new Set(blocked);
+  pool = pool.filter((e) => !e.participations.some((p) => p.status === "accepted" && avoid.has(p.userId)));
   pool = pool.filter((e) => e.hostId !== user.id && eligibleFor(e, user) && !e.participations.some((p) => p.userId === user.id));
   if (!pool.length) return null;
 

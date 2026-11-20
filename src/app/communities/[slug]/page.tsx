@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { blockedIds, hostFilter } from "@/lib/safety";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
@@ -26,7 +27,7 @@ export default async function CommunityPage({ params, searchParams }: { params: 
   const active = c.members.filter((m) => m.status === "active");
   const pending = c.members.filter((m) => m.status === "pending");
   const events = await db.event.findMany({
-    where: { ...upcomingWhere(), communityId: c.id, ...(isMember ? {} : { visibility: "public" }) },
+    where: { ...upcomingWhere(), ...hostFilter(await blockedIds(user?.id)), communityId: c.id, ...(isMember ? {} : { visibility: "public" }) },
     include: { host: { select: { name: true } }, participations: { select: { status: true } }, community: { select: { name: true } } },
     orderBy: { startsAt: "asc" },
   });

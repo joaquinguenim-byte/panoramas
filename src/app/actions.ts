@@ -12,6 +12,7 @@ import { clientIp, hit } from "@/lib/rateLimit";
 import { translator, type Locale } from "@/lib/i18n";
 import { deleteIdDoc, saveIdDoc } from "@/lib/idDocs";
 import { REJECT_REASONS, requireStaff } from "@/lib/staff";
+import { audit, blockedIds, USER_REPORT_REASONS } from "@/lib/safety";
 import { canPost, canSeeEvent, COMMUNITY_KINDS, myCommunityIds, slugify, WHO_CAN_POST } from "@/lib/communities";
 import { checkContent, REPORT_HIDE_THRESHOLD } from "@/lib/moderation";
 import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
@@ -71,6 +72,7 @@ export async function login(formData: FormData) {
   if (!ok) fail(`/login?next=${encodeURIComponent(next)}`, "tooMany");
   const user = await db.user.findUnique({ where: { email } });
   if (!user || !(await checkPassword(s(formData, "password"), user.passwordHash))) fail(`/login?next=${encodeURIComponent(next)}`, "badLogin");
+  if (user.suspendedAt) fail("/login", "suspended");
   await createSession(user.id);
   redirect(next);
 }
@@ -187,6 +189,7 @@ export async function reviewIdDoc(formData: FormData) {
     },
   });
   if (target.idDocPath) await deleteIdDoc(target.idDocPath).catch((e) => console.error("ID doc delete failed", e));
+  await audit(staff.id, approve ? "id.approve" : "id.reject", "user", userId, approve ? "" : reason);
   revalidatePath("/admin/verifications");
   redirect(`/admin/verifications?done=${approve ? "approved" : "rejected"}`);
 }
@@ -281,6 +284,9 @@ export async function joinEvent(formData: FormData) {
   if (!eligibleFor(event, user)) fail(`/events/${id}`, "generic");
   if (!canSeeEvent(event, user.id, await myCommunityIds(user.id))) fail(`/events/${id}`, "generic");
   if (takenSpots(event) >= event.capacity) fail(`/events/${id}`, "generic");
+  const avoid = new Set(await blockedIds(user.id));
+  if (avoid.has(event.hostId) || event.participations.some((p) => p.status === "accepted" && avoid.has(p.userId)))
+    fail(`/events/${id}`, "blocked");
   const status = event.joinMode === "instant" ? "accepted" : "pending";
   const data = { status, note: s(formData, "note").slice(0, 300), viaSurprise: formData.get("surprise") === "1" };
   await db.participation.upsert({
@@ -309,6 +315,11 @@ export async function decideApplication(formData: FormData) {
   if (!p || p.event.hostId !== user.id) redirect("/");
   const accept = s(formData, "decision") === "accept";
   if (accept && takenSpots(p.event) >= p.event.capacity) fail(`/events/${p.eventId}`, "generic");
+  if (accept) {
+    const avoid = new Set(await blockedIds(p.userId));
+    if (avoid.has(user.id) || p.event.participations.some((o) => o.status === "accepted" && avoid.has(o.userId)))
+      fail(`/events/${p.eventId}`, "blockedApplicant");
+  }
   await db.participation.update({ where: { id: pid }, data: { status: accept ? "accepted" : "rejected" } });
   redirect(`/events/${p.eventId}`);
 }
@@ -418,4 +429,131 @@ export async function manageMember(formData: FormData) {
   else if (op === "admin") await db.communityMember.update({ where: { id: m.id }, data: { role: "admin" } });
   else if (op === "remove") await db.communityMember.delete({ where: { id: m.id } });
   redirect(`/communities/${m.community.slug}`);
+}
+
+// ---------- Safety: report and block people, delete account ----------
+
+export async function reportUser(formData: FormData) {
+  const reportedId = s(formData, "userId");
+  const back = `/users/${reportedId}`;
+  const user = await requireUser(back);
+  if (reportedId === user.id) redirect(back);
+  if (!(await hit("report", user.id))) fail(back, "tooMany");
+  if (!(await db.user.findUnique({ where: { id: reportedId }, select: { id: true } }))) redirect("/");
+  const data = {
+    reason: oneOf(USER_REPORT_REASONS, s(formData, "reason"), "other"),
+    details: s(formData, "details").slice(0, 1000),
+    eventId: s(formData, "eventId") || null,
+    status: "open",
+    resolvedAt: null,
+    resolvedById: null,
+  };
+  await db.userReport.upsert({
+    where: { reportedId_reporterId: { reportedId, reporterId: user.id } },
+    create: { reportedId, reporterId: user.id, ...data },
+    update: data,
+  });
+  if (formData.get("alsoBlock") === "on") await doBlock(user.id, reportedId);
+  redirect(`${back}?reported=1`);
+}
+
+async function doBlock(blockerId: string, blockedId: string) {
+  await db.block.upsert({
+    where: { blockerId_blockedId: { blockerId, blockedId } },
+    create: { blockerId, blockedId },
+    update: {},
+  });
+  const upcoming = { status: "active", startsAt: { gt: new Date() } };
+  // Take the blocked person out of my upcoming plans, and me out of theirs.
+  await db.participation.updateMany({
+    where: { userId: blockedId, status: { in: ["pending", "accepted"] }, event: { hostId: blockerId, ...upcoming } },
+    data: { status: "rejected" },
+  });
+  await db.participation.updateMany({
+    where: { userId: blockerId, status: { in: ["pending", "accepted"] }, event: { hostId: blockedId, ...upcoming } },
+    data: { status: "left" },
+  });
+}
+
+export async function blockUser(formData: FormData) {
+  const blockedId = s(formData, "userId");
+  const user = await requireUser(`/users/${blockedId}`);
+  if (blockedId !== user.id) await doBlock(user.id, blockedId);
+  redirect(`/users/${blockedId}?blocked=1`);
+}
+
+export async function unblockUser(formData: FormData) {
+  const blockedId = s(formData, "userId");
+  const user = await requireUser(`/users/${blockedId}`);
+  await db.block.deleteMany({ where: { blockerId: user.id, blockedId } });
+  redirect(`/users/${blockedId}`);
+}
+
+/**
+ * Deletes the account and personal data (Ley 19.628 / 21.719). Upcoming plans
+ * the person hosts are cancelled first so attendees aren't left waiting.
+ * Staff audit entries are kept, without personal data.
+ */
+export async function deleteAccount(formData: FormData) {
+  const user = await requireUser("/account/delete");
+  if (!(await checkPassword(s(formData, "password"), user.passwordHash))) fail("/account/delete", "badPassword");
+  if (s(formData, "confirm").toUpperCase() !== "ELIMINAR" && s(formData, "confirm").toUpperCase() !== "DELETE")
+    fail("/account/delete", "confirmWord");
+  await db.event.updateMany({ where: { hostId: user.id, status: "active", startsAt: { gt: new Date() } }, data: { status: "cancelled" } });
+  if (user.idDocPath) await deleteIdDoc(user.idDocPath).catch(() => {});
+  await audit(user.id, "account.delete", "user", user.id);
+  await destroySession();
+  // Hosted events (past ones too) go with the account through the cascade.
+  await db.user.delete({ where: { id: user.id } });
+  redirect("/?deleted=1");
+}
+
+// ---------- Staff moderation ----------
+
+export async function moderate(formData: FormData) {
+  const staff = await requireStaff("/admin/reports");
+  const op = s(formData, "op");
+  const id = s(formData, "id");
+  const note = s(formData, "note").slice(0, 500);
+  const now = new Date();
+  const resolved = (status: string) => ({ status, resolvedAt: now, resolvedById: staff.id });
+
+  switch (op) {
+    case "userReport.dismiss":
+      await db.userReport.update({ where: { id }, data: resolved("dismissed") });
+      await audit(staff.id, "report.dismiss", "userReport", id, note);
+      break;
+    case "eventReports.dismiss": // all open reports about one event
+      await db.report.updateMany({ where: { eventId: id, status: "open" }, data: resolved("dismissed") });
+      await audit(staff.id, "report.dismiss", "event", id, note);
+      break;
+    case "user.suspend": {
+      const target = await db.user.findUnique({ where: { id } });
+      if (!target || target.id === staff.id || target.role === "admin") fail("/admin/reports", "generic");
+      await db.user.update({ where: { id }, data: { suspendedAt: now, suspendReason: note || null } });
+      await db.session.deleteMany({ where: { userId: id } });
+      await db.event.updateMany({ where: { hostId: id, status: "active", startsAt: { gt: now } }, data: { status: "cancelled" } });
+      await db.userReport.updateMany({ where: { reportedId: id, status: "open" }, data: resolved("actioned") });
+      await audit(staff.id, "user.suspend", "user", id, note);
+      break;
+    }
+    case "user.unsuspend":
+      await db.user.update({ where: { id }, data: { suspendedAt: null, suspendReason: null } });
+      await audit(staff.id, "user.unsuspend", "user", id, note);
+      break;
+    case "event.hide":
+      await db.event.update({ where: { id }, data: { status: "hidden" } });
+      await db.report.updateMany({ where: { eventId: id, status: "open" }, data: resolved("actioned") });
+      await audit(staff.id, "event.hide", "event", id, note);
+      break;
+    case "event.restore":
+      await db.event.update({ where: { id }, data: { status: "active" } });
+      await db.report.updateMany({ where: { eventId: id, status: "open" }, data: resolved("dismissed") });
+      await audit(staff.id, "event.restore", "event", id, note);
+      break;
+    default:
+      fail("/admin/reports", "generic");
+  }
+  revalidatePath("/admin/reports");
+  redirect(`/admin/reports?done=1`);
 }

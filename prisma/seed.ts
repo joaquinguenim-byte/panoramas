@@ -16,6 +16,8 @@ async function main() {
   await db.event.deleteMany();
   await db.communityMember.deleteMany();
   await db.community.deleteMany();
+  await db.rateHit.deleteMany();
+  await db.auditLog.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
 

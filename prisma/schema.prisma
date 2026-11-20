@@ -43,11 +43,18 @@ model User {
 
   // "user" | "moderator" | "admin". Staff can review ID documents and reports.
   role         String   @default("user")
+  // Set by staff. A suspended person can't sign in and their plans are hidden.
+  suspendedAt   DateTime?
+  suspendReason String?
 
   createdAt    DateTime @default(now())
 
   sessions      Session[]
   tokens        AuthToken[]
+  reportsMade     UserReport[] @relation("ReportsMade")
+  reportsReceived UserReport[] @relation("ReportsReceived")
+  blocking        Block[]      @relation("Blocking")
+  blockedBy       Block[]      @relation("BlockedBy")
   hostedEvents  Event[]         @relation("HostedEvents")
   participations Participation[]
   messages      Message[]
@@ -64,8 +71,8 @@ model Community {
   description String
   kind        String   @default("open")    // "open" = anyone joins instantly | "closed" = admins approve requests
   whoCanPost  String   @default("members") // "members" | "admins": who can publish plans for the community
-  createdById String
-  createdBy   User     @relation("CreatedCommunities", fields: [createdById], references: [id])
+  createdById String?  // null once the creator deletes their account
+  createdBy   User?    @relation("CreatedCommunities", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
   members     CommunityMember[]
@@ -158,6 +165,9 @@ model Report {
   reporterId String
   reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   reason     String
+  status     String   @default("open") // "open" | "actioned" | "dismissed"
+  resolvedAt DateTime?
+  resolvedById String?
   createdAt  DateTime @default(now())
 
   @@unique([eventId, reporterId])
@@ -183,4 +193,48 @@ model RateHit {
   createdAt DateTime @default(now())
 
   @@index([key, createdAt])
+}
+
+// A report about a person (harassment, dating intent, selling, no-show...).
+model UserReport {
+  id           String    @id @default(cuid())
+  reportedId   String
+  reported     User      @relation("ReportsReceived", fields: [reportedId], references: [id], onDelete: Cascade)
+  reporterId   String
+  reporter     User      @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  eventId      String?   // the plan where it happened, if any
+  reason       String    // "harassment" | "dating" | "selling" | "fake" | "unsafe" | "noshow" | "other"
+  details      String    @default("")
+  status       String    @default("open") // "open" | "actioned" | "dismissed"
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([reportedId, reporterId])
+  @@index([status, createdAt])
+}
+
+// Blocked people never see each other's plans and can't be at the same plan.
+model Block {
+  blockerId String
+  blocker   User     @relation("Blocking", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlockedBy", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// Every staff decision, kept even if the people involved delete their accounts.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String   // "id.approve" | "id.reject" | "user.suspend" | "user.unsuspend" | "event.hide" | "event.restore" | "report.dismiss"
+  targetType String   // "user" | "event" | "report"
+  targetId   String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
