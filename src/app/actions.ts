@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkPassword, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
 import { isAdult, normalizeId, verifyIdentity, type IdType } from "@/lib/verification";
-import { saveIdDoc } from "@/lib/idDocs";
+import { deleteIdDoc, saveIdDoc } from "@/lib/idDocs";
+import { REJECT_REASONS, requireStaff } from "@/lib/staff";
 import { canPost, canSeeEvent, COMMUNITY_KINDS, myCommunityIds, slugify, WHO_CAN_POST } from "@/lib/communities";
 import { checkContent, REPORT_HIDE_THRESHOLD } from "@/lib/moderation";
 import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
@@ -62,6 +63,7 @@ export async function verify(formData: FormData) {
   if (other && other.id !== user.id) fail("/verify", "idTaken");
   const doc = await saveIdDoc(user.id, formData.get("idDoc") as File | null);
   if (!doc.ok) fail("/verify", doc.error);
+  if (user.idDocPath) await deleteIdDoc(user.idDocPath).catch(() => {}); // replaced after a rejection
   await db.user.update({
     where: { id: user.id },
     data: {
@@ -70,11 +72,43 @@ export async function verify(formData: FormData) {
       idDocPath: doc.relPath,
       idDocUploadedAt: new Date(),
       idDocStatus: "pending_review",
+      idDocReviewedAt: null,
+      idDocReviewedById: null,
+      idDocRejectReason: null,
       // PILOT: access is granted on upload; the document is reviewed afterwards.
       verifiedAt: new Date(),
     },
   });
   redirect("/profile?welcome=1");
+}
+
+/**
+ * Staff decision on an uploaded ID document. Either way the photo is deleted
+ * right after the decision: we only keep the outcome, not the image.
+ * Rejecting removes access until the person uploads a new document.
+ */
+export async function reviewIdDoc(formData: FormData) {
+  const staff = await requireStaff("/admin/verifications");
+  const userId = s(formData, "userId");
+  const decision = s(formData, "decision");
+  const target = await db.user.findUnique({ where: { id: userId } });
+  if (!target || target.idDocStatus !== "pending_review") redirect("/admin/verifications");
+  const approve = decision === "approve";
+  const reason = oneOf(REJECT_REASONS, s(formData, "reason"), "other");
+  await db.user.update({
+    where: { id: userId },
+    data: {
+      idDocStatus: approve ? "approved" : "rejected",
+      idDocReviewedAt: new Date(),
+      idDocReviewedById: staff.id,
+      idDocRejectReason: approve ? null : reason,
+      idDocPath: null,
+      verifiedAt: approve ? (target.verifiedAt ?? new Date()) : null,
+    },
+  });
+  if (target.idDocPath) await deleteIdDoc(target.idDocPath).catch((e) => console.error("ID doc delete failed", e));
+  revalidatePath("/admin/verifications");
+  redirect(`/admin/verifications?done=${approve ? "approved" : "rejected"}`);
 }
 
 export async function updateProfile(formData: FormData) {

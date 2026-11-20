@@ -2,6 +2,7 @@ import { verify } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/i18n";
 import ErrorNote from "@/components/ErrorNote";
+import type { MsgKey } from "@/lib/i18n";
 
 export default async function Verify({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const { error } = await searchParams;
@@ -13,10 +14,16 @@ export default async function Verify({ searchParams }: { searchParams: Promise<{
       <h1 className="text-3xl font-extrabold">{t("verify.title")}</h1>
       <p className="mb-6 mt-2 text-sm text-muted">{t("verify.intro")}</p>
       <ErrorNote error={error} />
+      {!user.verifiedAt && user.idDocStatus === "rejected" && (
+        <p className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          {t("verify.rejected", { reason: t(`admin.reason.${user.idDocRejectReason ?? "other"}` as MsgKey).toLowerCase() })}
+        </p>
+      )}
       {user.verifiedAt ? (
         <p className="card font-semibold text-sea">
           {t("verify.done")} · {user.idNumber}
           {user.idDocStatus === "pending_review" && <span className="mt-1 block text-xs font-normal text-muted">{t("verify.docPending")}</span>}
+          {user.idDocStatus === "approved" && <span className="mt-1 block text-xs font-normal text-muted">{t("verify.docApproved")}</span>}
         </p>
       ) : (
         <form action={verify} className="card space-y-4">

@@ -16,6 +16,10 @@ npm run db:setup     # applies migrations and loads demo data
 npm run dev          # http://localhost:3000
 ```
 
+Staff: `npm run set-role -- someone@example.com admin` (or `moderator`). The demo account `demo@demo.cl` is an admin. Staff see a 🛡️ link to `/admin`.
+
+ID documents in production: create a **private** bucket `id-docs` in Supabase Storage, then set `ID_DOC_STORAGE=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `ID_DOC_ENCRYPTION_KEY` (`openssl rand -base64 32`). Keep the key safe: without it the stored documents can't be read.
+
 Changing the schema: edit `prisma/schema.prisma`, then `npm run db:migrate -- --name what_changed` and commit the new folder in `prisma/migrations/`. Production runs `npm run db:deploy`.
 
 Demo data includes a closed *CFA Society Chile* community (camila@ is admin, demo@ is a member, tomas@ has a pending request) and an open *Corredores de Ñuñoa*. It also includes vegan / animal-friendly plans such as *Voluntariado Santuario Clafiria + Almuerzo Vegano*.
@@ -29,7 +33,7 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 | Area | How it works |
 | --- | --- |
 | Accounts | Email + password, 18+ enforced from birth date. |
-| Verification | Step 2 of sign-up: Chilean RUT (módulo 11 check digit) or passport / foreign ID, one account per document, plus a required photo of the ID (JPG/PNG/HEIC/PDF, 6 MB, type checked from file bytes). Photos are stored privately in `storage/id-docs/` (git-ignored, never served) with status `pending_review`. **Stub:** access is granted on upload; real document + selfie KYC still to plug in (`src/lib/verification.ts`, `src/lib/idDocs.ts`). Must be verified to create or join. |
+| Verification | Step 2 of sign-up: Chilean RUT (módulo 11 check digit) or passport / foreign ID, one account per document, plus a required photo of the ID (JPG/PNG/HEIC/PDF, 6 MB, type checked from file bytes). The photo is **encrypted (AES-256-GCM) before storage** and kept in a private Supabase bucket in production (`./storage/id-docs` locally). Staff review it at `/admin/verifications`: approve or reject with a reason, and the photo is **deleted right after the decision**. A rejected person loses access until they upload a new one. **Still a stub:** access is granted on upload, before review; automatic document + selfie KYC comes later (`src/lib/verification.ts`). Must be verified to create or join. |
 | Plans | Title, category, comuna, date, capacity (2–12 incl. host), cost note ("cada uno paga lo suyo"). Host must confirm they're not the provider and receive no money, and that it's not a date / adult / illegal / animal-abuse plan. |
 | Join mode | Per plan: *entrada directa* (instant) or *el anfitrión revisa* (host accepts/declines applications). |
 | Location privacy | Only the comuna is public. Exact place shows once accepted, unless the host marks "the place is the plan" (concert, play). |
@@ -49,7 +53,7 @@ Database is **Postgres** with Prisma migrations. To deploy (e.g. Vercel + Supaba
 
 ## Next steps
 
-- Move ID photos to a private encrypted bucket and add a review screen; then real KYC (document + selfie) and verified gender for women-only plans.
+- Real KYC (document + selfie) and verified gender for women-only plans.
 - Email/WhatsApp notifications (accepted, new message, reminder).
 - Post-event "would meet again" feedback to tune Sorpréndeme and flag bad actors.
 - Moderation dashboard for reports.

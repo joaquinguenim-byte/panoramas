@@ -36,6 +36,12 @@ model User {
   idDocPath       String?
   idDocUploadedAt DateTime?
   idDocStatus     String?  // "pending_review" | "approved" | "rejected" (manual / KYC review)
+  idDocReviewedAt   DateTime?
+  idDocReviewedById String?
+  idDocRejectReason String?  // key: "unreadable" | "mismatch" | "underage" | "fake" | "other"
+
+  // "user" | "moderator" | "admin". Staff can review ID documents and reports.
+  role         String   @default("user")
 
   createdAt    DateTime @default(now())
 
