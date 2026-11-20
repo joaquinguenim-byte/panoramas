@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { checkPassword, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
 import { isAdult, normalizeId, verifyIdentity, type IdType } from "@/lib/verification";
 import { saveIdDoc } from "@/lib/idDocs";
+import { canPost, canSeeEvent, COMMUNITY_KINDS, myCommunityIds, slugify, WHO_CAN_POST } from "@/lib/communities";
 import { checkContent, REPORT_HIDE_THRESHOLD } from "@/lib/moderation";
 import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
 import { chileLocalToDate } from "@/lib/time";
@@ -118,6 +119,19 @@ export async function createEvent(formData: FormData) {
   const check = checkContent(title, description, venue, costNote);
   if (!check.ok) fail("/events/new", `content.${check.rule}`);
 
+  let communityId: string | null = null;
+  let visibility = "public";
+  const cid = s(formData, "communityId");
+  if (cid) {
+    const m = await db.communityMember.findUnique({
+      where: { communityId_userId: { communityId: cid, userId: user.id } },
+      include: { community: true },
+    });
+    if (!m || !canPost(m.community, m)) fail("/events/new", "generic");
+    communityId = cid;
+    visibility = s(formData, "visibility") === "community" ? "community" : "public";
+  }
+
   const event = await db.event.create({
     data: {
       hostId: user.id,
@@ -135,6 +149,8 @@ export async function createEvent(formData: FormData) {
       audience: oneOf(AUDIENCES, s(formData, "audience"), "open"),
       shareContacts: formData.get("shareContacts") === "on",
       hostPledgeAt: new Date(),
+      communityId,
+      visibility,
     },
   });
   redirect(`/events/${event.id}`);
@@ -147,6 +163,7 @@ export async function joinEvent(formData: FormData) {
   const event = await db.event.findUnique({ where: { id }, include: { participations: true } });
   if (!event || event.status !== "active" || event.startsAt <= new Date() || event.hostId === user.id) fail(`/events/${id}`, "generic");
   if (!eligibleFor(event, user)) fail(`/events/${id}`, "generic");
+  if (!canSeeEvent(event, user.id, await myCommunityIds(user.id))) fail(`/events/${id}`, "generic");
   if (takenSpots(event) >= event.capacity) fail(`/events/${id}`, "generic");
   const status = event.joinMode === "instant" ? "accepted" : "pending";
   const data = { status, note: s(formData, "note").slice(0, 300), viaSurprise: formData.get("surprise") === "1" };
@@ -211,4 +228,75 @@ export async function reportEvent(formData: FormData) {
   const count = await db.report.count({ where: { eventId: id } });
   if (count >= REPORT_HIDE_THRESHOLD) await db.event.update({ where: { id }, data: { status: "hidden" } });
   redirect(`/events/${id}?reported=1`);
+}
+
+// ---------- Communities ----------
+
+export async function createCommunity(formData: FormData) {
+  const user = await requireUser("/communities/new");
+  if (!user.verifiedAt) redirect("/verify");
+  const name = s(formData, "name").slice(0, 80);
+  const description = s(formData, "description").slice(0, 1000);
+  if (name.length < 3 || description.length < 10) fail("/communities/new", "generic");
+  const check = checkContent(name, description);
+  if (!check.ok) fail("/communities/new", `content.${check.rule}`);
+  let slug = slugify(name) || "comunidad";
+  if (await db.community.findUnique({ where: { slug } })) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+  const c = await db.community.create({
+    data: {
+      slug,
+      name,
+      description,
+      kind: oneOf(COMMUNITY_KINDS, s(formData, "kind"), "open"),
+      whoCanPost: oneOf(WHO_CAN_POST, s(formData, "whoCanPost"), "members"),
+      createdById: user.id,
+      members: { create: { userId: user.id, role: "admin", status: "active" } },
+    },
+  });
+  redirect(`/communities/${c.slug}`);
+}
+
+export async function joinCommunity(formData: FormData) {
+  const slug = s(formData, "slug");
+  const user = await requireUser(`/communities/${slug}`);
+  if (!user.verifiedAt) redirect("/verify");
+  const c = await db.community.findUnique({ where: { slug } });
+  if (!c) redirect("/communities");
+  const status = c.kind === "open" ? "active" : "pending";
+  const note = s(formData, "note").slice(0, 300);
+  const existing = await db.communityMember.findUnique({ where: { communityId_userId: { communityId: c.id, userId: user.id } } });
+  if (existing?.status === "active") redirect(`/communities/${slug}`);
+  await db.communityMember.upsert({
+    where: { communityId_userId: { communityId: c.id, userId: user.id } },
+    create: { communityId: c.id, userId: user.id, status, note },
+    update: { status, note, role: "member" },
+  });
+  redirect(`/communities/${slug}`);
+}
+
+export async function leaveCommunity(formData: FormData) {
+  const slug = s(formData, "slug");
+  const user = await requireUser(`/communities/${slug}`);
+  const c = await db.community.findUnique({ where: { slug }, include: { members: true } });
+  if (!c) redirect("/communities");
+  const me = c.members.find((m) => m.userId === user.id);
+  const otherAdmins = c.members.filter((m) => m.role === "admin" && m.status === "active" && m.userId !== user.id);
+  if (me?.role === "admin" && otherAdmins.length === 0) fail(`/communities/${slug}`, "lastAdmin");
+  await db.communityMember.deleteMany({ where: { communityId: c.id, userId: user.id } });
+  redirect(`/communities/${slug}`);
+}
+
+/** Admin actions on a membership: accept / reject a request, make admin, remove. */
+export async function manageMember(formData: FormData) {
+  const user = await requireUser();
+  const m = await db.communityMember.findUnique({ where: { id: s(formData, "memberId") }, include: { community: true } });
+  if (!m) redirect("/communities");
+  const me = await db.communityMember.findUnique({ where: { communityId_userId: { communityId: m.communityId, userId: user.id } } });
+  if (me?.role !== "admin" || me.status !== "active" || m.userId === user.id) redirect(`/communities/${m.community.slug}`);
+  const op = s(formData, "op");
+  if (op === "accept") await db.communityMember.update({ where: { id: m.id }, data: { status: "active" } });
+  else if (op === "reject") await db.communityMember.update({ where: { id: m.id }, data: { status: "rejected" } });
+  else if (op === "admin") await db.communityMember.update({ where: { id: m.id }, data: { role: "admin" } });
+  else if (op === "remove") await db.communityMember.delete({ where: { id: m.id } });
+  redirect(`/communities/${m.community.slug}`);
 }

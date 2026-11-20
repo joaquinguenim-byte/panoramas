@@ -2,6 +2,8 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { getT, type MsgKey } from "@/lib/i18n";
 import { upcomingWhere } from "@/lib/events";
+import { currentUser } from "@/lib/auth";
+import { myCommunityIds, visibleTo } from "@/lib/communities";
 import { CATEGORIES, COMUNAS } from "@/lib/constants";
 import EventCard from "@/components/EventCard";
 
@@ -9,10 +11,11 @@ export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ comuna?: string; category?: string }> }) {
   const { comuna, category } = await searchParams;
-  const { t, locale } = await getT();
+  const [{ t, locale }, user] = await Promise.all([getT(), currentUser()]);
+  const ids = await myCommunityIds(user?.id);
   const events = await db.event.findMany({
-    where: { ...upcomingWhere(), ...(comuna ? { comuna } : {}), ...(category ? { category } : {}) },
-    include: { host: { select: { name: true } }, participations: { select: { status: true } } },
+    where: { ...upcomingWhere(), ...visibleTo(ids), ...(comuna ? { comuna } : {}), ...(category ? { category } : {}) },
+    include: { host: { select: { name: true } }, participations: { select: { status: true } }, community: { select: { name: true } } },
     orderBy: { startsAt: "asc" },
     take: 60,
   });

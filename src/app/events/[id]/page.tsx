@@ -7,6 +7,7 @@ import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
 import { CATEGORY_EMOJI } from "@/lib/constants";
 import { cancelEvent, decideApplication, joinEvent, leaveEvent, reportEvent, sendMessage } from "@/app/actions";
 import ErrorNote from "@/components/ErrorNote";
+import { canSeeEvent, myCommunityIds } from "@/lib/communities";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,27 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     where: { id },
     include: {
       host: true,
+      community: true,
       participations: { include: { user: true }, orderBy: { createdAt: "asc" } },
       messages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
   if (!event || (event.status === "hidden" && event.hostId !== user?.id)) notFound();
+  const myIds = await myCommunityIds(user?.id);
+  if (!canSeeEvent(event, user?.id, myIds)) {
+    // Members-only plan: show only which community it belongs to.
+    return (
+      <div className="card mx-auto max-w-md text-center">
+        <p className="text-4xl">🔒</p>
+        <p className="mt-3">{t("event.visibility.community")}</p>
+        {event.community && (
+          <Link href={`/communities/${event.community.slug}`} className="btn-primary mt-5">
+            👥 {event.community.name}
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   const isHost = user?.id === event.hostId;
   const mine = user ? event.participations.find((p) => p.userId === user.id) : undefined;
@@ -65,6 +82,12 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             )}
             <span className="chip">{t(`joinMode.${event.joinMode}` as MsgKey)}</span>
           </div>
+          {event.community && (
+            <Link href={`/communities/${event.community.slug}`} className="mb-1 block text-sm font-semibold text-sea hover:underline">
+              👥 {t("event.byCommunity", { name: event.community.name })}
+              {event.visibility === "community" && <span className="ml-1 font-normal text-muted">· 🔒 {t("event.membersOnly")}</span>}
+            </Link>
+          )}
           <h1 className="text-3xl font-extrabold leading-tight">{event.title}</h1>
           <p className="mt-1 text-sm text-muted">{t("event.host", { name: firstName(event.host.name) })}</p>
           {event.status === "cancelled" && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{t("event.cancelled")}</p>}

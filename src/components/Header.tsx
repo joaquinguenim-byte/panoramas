@@ -17,6 +17,10 @@ export default async function Header() {
           <Link href="/surprise" className="btn-primary whitespace-nowrap px-3 py-1.5 text-sm">
             ✨ {t("surprise.button")}
           </Link>
+          <Link href="/communities" className="whitespace-nowrap rounded-full px-2 py-1 hover:bg-white" aria-label={t("nav.communities")}>
+            <span className="sm:hidden">👥</span>
+            <span className="hidden sm:inline">{t("nav.communities")}</span>
+          </Link>
           {user ? (
             <>
               <Link href="/events/new" className="rounded-full px-2 py-1 hover:bg-white" aria-label={t("nav.create")}>
