@@ -6,6 +6,7 @@ import { currentUser } from "@/lib/auth";
 import { myCommunityIds, visibleTo } from "@/lib/communities";
 import { CATEGORIES, COMUNAS } from "@/lib/constants";
 import EventCard from "@/components/EventCard";
+import { GASTOS_HOME } from "@/lib/gastos";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
             {t("ideas.cta")}
           </Link>
         </div>
+      </section>
+
+      <section className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm sm:max-w-xl">🧾 {t("gastos.landing")}</p>
+        <a href={`${GASTOS_HOME}/?ref=panoramas`} target="_blank" rel="noopener" className="btn-ghost shrink-0 self-start text-sm sm:self-auto">
+          {t("gastos.learnMore")} ↗
+        </a>
       </section>
 
       <section>

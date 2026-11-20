@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import Header from "@/components/Header";
 import { getT } from "@/lib/i18n";
+import GastosBadge from "@/components/GastosBadge";
 
 export const metadata: Metadata = {
   title: "Panoramas · Ese encuentro inesperado",
@@ -22,6 +23,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Link href="/rules" className="underline">
             {t("nav.rules")}
           </Link>
+          <div className="mt-3">
+            <GastosBadge t={t} />
+          </div>
         </footer>
       </body>
     </html>

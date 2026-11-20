@@ -8,6 +8,8 @@ import { CATEGORY_EMOJI } from "@/lib/constants";
 import { cancelEvent, decideApplication, joinEvent, leaveEvent, reportEvent, sendMessage } from "@/app/actions";
 import ErrorNote from "@/components/ErrorNote";
 import { canSeeEvent, myCommunityIds } from "@/lib/communities";
+import { gastosUrl } from "@/lib/gastos";
+import GastosBadge from "@/components/GastosBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +115,29 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               <dd className="font-semibold">{event.costNote || t("event.noCosts")}</dd>
             </div>
           </dl>
+          <GastosBadge t={t} className="mt-5" />
         </article>
+
+        {isMember && event.status !== "cancelled" && (
+          <section id="gastos" className={`card ${past ? "border-2 border-sea" : ""}`}>
+            <h2 className="mb-1 font-bold">🧾 {t("gastos.title")}</h2>
+            <p className="text-sm">{t(past ? "gastos.body" : "gastos.bodyBefore", { name: `“${event.title}”` })}</p>
+            <a
+              href={gastosUrl({
+                id: event.id,
+                title: event.title,
+                startsAt: event.startsAt,
+                people: [event.host, ...accepted.map((p) => p.user)].map((u) => firstName(u.name)),
+              })}
+              target="_blank"
+              rel="noopener"
+              className={`${past ? "btn-primary" : "btn-ghost"} mt-4`}
+            >
+              {t("gastos.cta")} ↗
+            </a>
+            <p className="mt-2 text-xs text-muted">{t("gastos.privacy")}</p>
+          </section>
+        )}
 
         {isMember && (
           <section id="chat" className="card">
