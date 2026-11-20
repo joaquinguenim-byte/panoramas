@@ -16,20 +16,22 @@ async function main() {
   await db.event.deleteMany();
   await db.communityMember.deleteMany();
   await db.community.deleteMany();
+  await db.rateHit.deleteMany();
+  await db.auditLog.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
 
   const passwordHash = await bcrypt.hash("panoramas123", 10);
   const mk = (email: string, name: string, extra: Record<string, unknown> = {}) =>
     db.user.create({
-      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), idDocStatus: "approved", idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
+      data: { email, name, passwordHash, birthDate: new Date("1992-05-10"), verifiedAt: new Date(), emailVerifiedAt: new Date(), idDocStatus: "approved", idType: "passport", idNumber: email.split("@")[0].toUpperCase() + "123", ...extra },
     });
 
   const camila = await mk("camila@demo.cl", "Camila Rojas", { gender: "woman", comuna: "Providencia", interests: "books,culture", bio: "Lectora compulsiva y fan del teatro.", contact: "@cami.lee" });
   const diego = await mk("diego@demo.cl", "Diego Muñoz", { gender: "man", comuna: "Las Condes", interests: "snow,sports,outdoors", bio: "Esquío desde chico. Siempre hay espacio en el auto.", contact: "+56 9 1234 5678" });
   const vale = await mk("vale@demo.cl", "Valentina Soto", { gender: "woman", lgbtq: true, vegan: true, comuna: "Ñuñoa", interests: "food,art", bio: "Cocina vegana y cerámica." });
   const tomas = await mk("tomas@demo.cl", "Tomás Fuentes", { gender: "man", comuna: "Viña del Mar", interests: "beach,music", bio: "Surf los fines de semana." });
-  await mk("demo@demo.cl", "Demo Panoramas", { comuna: "Santiago Centro", interests: "tech,games" });
+  await mk("demo@demo.cl", "Demo Panoramas", { comuna: "Santiago Centro", interests: "tech,games", role: "admin" });
 
   const pledge = { hostPledgeAt: new Date() };
   const events = [
@@ -95,7 +97,7 @@ async function main() {
   await db.participation.create({ data: { eventId: book.id, userId: vale.id, status: "accepted" } });
   await db.message.create({ data: { eventId: book.id, userId: camila.id, body: "¡Hola! Yo llevo una copia extra por si alguien la necesita." } });
 
-  console.log("Seeded. Demo login: demo@demo.cl / panoramas123 (also camila@, diego@, vale@, tomas@demo.cl)");
+  console.log("Seeded. Demo login: demo@demo.cl / panoramas123 (admin; also camila@, diego@, vale@, tomas@demo.cl)");
 }
 
 main().finally(() => db.$disconnect());

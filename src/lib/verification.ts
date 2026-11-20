@@ -63,3 +63,10 @@ export function normalizeId(type: IdType, value: string): string | null {
 export async function verifyIdentity(type: IdType, normalized: string): Promise<boolean> {
   return normalized.length > 0 && (type !== "rut" || isValidRut(normalized));
 }
+
+/** Where a person must go before they can create or join: email first, then ID. */
+export function nextVerifyStep(u: { emailVerifiedAt: Date | null; verifiedAt: Date | null }): "/verify-email" | "/verify" | null {
+  if (!u.emailVerifiedAt) return "/verify-email";
+  if (!u.verifiedAt) return "/verify";
+  return null;
+}

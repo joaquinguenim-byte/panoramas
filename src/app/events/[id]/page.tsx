@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { nextVerifyStep } from "@/lib/verification";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
@@ -8,6 +9,8 @@ import { CATEGORY_EMOJI } from "@/lib/constants";
 import { cancelEvent, decideApplication, joinEvent, leaveEvent, reportEvent, sendMessage } from "@/app/actions";
 import ErrorNote from "@/components/ErrorNote";
 import { canSeeEvent, myCommunityIds } from "@/lib/communities";
+import { blockedIds } from "@/lib/safety";
+import { isStaff } from "@/lib/staff";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +28,9 @@ export default async function EventPage({ params, searchParams }: { params: Prom
       messages: { include: { user: { select: { name: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
-  if (!event || (event.status === "hidden" && event.hostId !== user?.id)) notFound();
+  if (!event || (event.status === "hidden" && event.hostId !== user?.id && !isStaff(user))) notFound();
+  const blocked = new Set(await blockedIds(user?.id));
+  if (blocked.has(event.hostId) || (event.host.suspendedAt && !isStaff(user))) notFound();
   const myIds = await myCommunityIds(user?.id);
   if (!canSeeEvent(event, user?.id, myIds)) {
     // Members-only plan: show only which community it belongs to.
@@ -52,6 +57,14 @@ export default async function EventPage({ params, searchParams }: { params: Prom
   const past = event.startsAt <= new Date();
   const showVenue = event.venue && (event.venuePublic || isMember);
   const firstName = (n: string) => n.split(" ")[0];
+  const Person = ({ u }: { u: { id: string; name: string } }) =>
+    user && u.id !== user.id ? (
+      <Link href={`/users/${u.id}?event=${event.id}`} className="hover:underline">
+        {firstName(u.name)}
+      </Link>
+    ) : (
+      <>{firstName(u.name)}</>
+    );
 
   let surpriseReason = "";
   if (sp.surprise === "newCategory" && sp.v)
@@ -89,7 +102,15 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             </Link>
           )}
           <h1 className="text-3xl font-extrabold leading-tight">{event.title}</h1>
-          <p className="mt-1 text-sm text-muted">{t("event.host", { name: firstName(event.host.name) })}</p>
+          <p className="mt-1 text-sm text-muted">
+            {user && !isHost ? (
+              <Link href={`/users/${event.hostId}?event=${event.id}`} className="hover:underline">
+                {t("event.host", { name: firstName(event.host.name) })}
+              </Link>
+            ) : (
+              t("event.host", { name: firstName(event.host.name) })
+            )}
+          </p>
           {event.status === "cancelled" && <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{t("event.cancelled")}</p>}
           <p className="mt-5 whitespace-pre-line">{event.description}</p>
 
@@ -123,7 +144,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             ) : (
               <>
                 <ul className="mb-3 max-h-80 space-y-2 overflow-y-auto">
-                  {event.messages.map((m) => (
+                  {event.messages.filter((m) => !blocked.has(m.userId)).map((m) => (
                     <li key={m.id} className={`rounded-xl px-3 py-2 text-sm ${m.userId === user?.id ? "ml-8 bg-sun/10" : "mr-8 bg-sand"}`}>
                       <span className="font-semibold">{firstName(m.user.name)}: </span>
                       {m.body}
@@ -177,10 +198,10 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             <h3 className="mb-2 font-bold">{t("event.attendees")}</h3>
             <ul className="space-y-1 text-sm">
               <li>
-                ⭐ {firstName(event.host.name)}
+                ⭐ <Person u={event.host} />
               </li>
               {accepted.map((p) => (
-                <li key={p.id}>• {firstName(p.user.name)}</li>
+                <li key={p.id}>• <Person u={p.user} /></li>
               ))}
             </ul>
           </div>
@@ -193,7 +214,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             <ul className="space-y-3">
               {pending.map((p) => (
                 <li key={p.id} className="rounded-xl bg-sand p-3 text-sm">
-                  <p className="font-semibold">{firstName(p.user.name)}</p>
+                  <p className="font-semibold"><Person u={p.user} /></p>
                   {p.user.bio && <p className="text-muted">{p.user.bio}</p>}
                   {p.note && <p className="mt-1 italic">“{p.note}”</p>}
                   <div className="mt-2 flex gap-2">
@@ -211,6 +232,12 @@ export default async function EventPage({ params, searchParams }: { params: Prom
               ))}
             </ul>
           </div>
+        )}
+
+        {isMember && past && event.status === "active" && (
+          <Link href={`/events/${event.id}/feedback`} className="btn-primary w-full">
+            🙌 {t("feedback.title")}
+          </Link>
         )}
 
         {isHost && event.status === "active" && !past && (
@@ -261,9 +288,9 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           {t("event.mustLogin")}
         </Link>
       );
-    if (!user.verifiedAt)
+    if (nextVerifyStep(user))
       return (
-        <Link href="/verify" className="btn-primary w-full">
+        <Link href={nextVerifyStep(user)!} className="btn-primary w-full">
           {t("event.mustVerify")}
         </Link>
       );

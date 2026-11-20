@@ -4,17 +4,18 @@ import { getT, type MsgKey } from "@/lib/i18n";
 import { upcomingWhere } from "@/lib/events";
 import { currentUser } from "@/lib/auth";
 import { myCommunityIds, visibleTo } from "@/lib/communities";
+import { blockedIds, hostFilter } from "@/lib/safety";
 import { CATEGORIES, COMUNAS } from "@/lib/constants";
 import EventCard from "@/components/EventCard";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ comuna?: string; category?: string }> }) {
-  const { comuna, category } = await searchParams;
+export default async function Home({ searchParams }: { searchParams: Promise<{ comuna?: string; category?: string; deleted?: string }> }) {
+  const { comuna, category, deleted } = await searchParams;
   const [{ t, locale }, user] = await Promise.all([getT(), currentUser()]);
-  const ids = await myCommunityIds(user?.id);
+  const [ids, blocked] = await Promise.all([myCommunityIds(user?.id), blockedIds(user?.id)]);
   const events = await db.event.findMany({
-    where: { ...upcomingWhere(), ...visibleTo(ids), ...(comuna ? { comuna } : {}), ...(category ? { category } : {}) },
+    where: { ...upcomingWhere(), ...visibleTo(ids), ...hostFilter(blocked), ...(comuna ? { comuna } : {}), ...(category ? { category } : {}) },
     include: { host: { select: { name: true } }, participations: { select: { status: true } }, community: { select: { name: true } } },
     orderBy: { startsAt: "asc" },
     take: 60,
@@ -22,6 +23,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
 
   return (
     <div className="space-y-10">
+      {deleted && <p className="rounded-xl bg-sea/10 px-4 py-3 text-sm text-sea">{t("account.deleted")}</p>}
       <section className="relative overflow-hidden rounded-3xl bg-ink px-6 py-10 text-white sm:px-10 sm:py-14">
         <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-sun/40 blur-3xl" />
         <div className="absolute -bottom-20 left-10 h-56 w-56 rounded-full bg-sea/50 blur-3xl" />

@@ -1,20 +1,22 @@
 // Panoramas data model.
-// Pilot uses SQLite so the app runs with zero setup. To move to Postgres
-// (e.g. Supabase / Neon), change `provider` to "postgresql" and set DATABASE_URL.
+// Postgres everywhere (local Docker / Supabase / Neon). DATABASE_URL is the
+// pooled connection used by the app; DIRECT_URL is the direct one used by migrations.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  emailVerifiedAt DateTime?
   name         String
   birthDate    DateTime
   // "woman" | "man" | "nonbinary" | "unspecified" (self-declared, used for women-only events)
@@ -26,6 +28,7 @@ model User {
   interests    String   @default("") // comma-separated category keys
   contact      String   @default("") // what the user chooses to share (IG, phone...) when hosts allow it
   locale       String   @default("es")
+  emailNotifications Boolean @default(true) // reminders, applications, acceptances (security emails always go)
 
   // Identity verification (STUB: format + check digit only; see src/lib/verification.ts)
   idType       String?  // "rut" | "passport" | "foreign_id"
@@ -35,10 +38,27 @@ model User {
   idDocPath       String?
   idDocUploadedAt DateTime?
   idDocStatus     String?  // "pending_review" | "approved" | "rejected" (manual / KYC review)
+  idDocReviewedAt   DateTime?
+  idDocReviewedById String?
+  idDocRejectReason String?  // key: "unreadable" | "mismatch" | "underage" | "fake" | "other"
+
+  // "user" | "moderator" | "admin". Staff can review ID documents and reports.
+  role         String   @default("user")
+  // Set by staff. A suspended person can't sign in and their plans are hidden.
+  suspendedAt   DateTime?
+  suspendReason String?
 
   createdAt    DateTime @default(now())
 
   sessions      Session[]
+  tokens        AuthToken[]
+  reportsMade     UserReport[] @relation("ReportsMade")
+  reportsReceived UserReport[] @relation("ReportsReceived")
+  feedbackGiven   EventFeedback[]
+  peerGiven       PeerFeedback[] @relation("PeerFrom")
+  peerReceived    PeerFeedback[] @relation("PeerTo")
+  blocking        Block[]      @relation("Blocking")
+  blockedBy       Block[]      @relation("BlockedBy")
   hostedEvents  Event[]         @relation("HostedEvents")
   participations Participation[]
   messages      Message[]
@@ -55,8 +75,8 @@ model Community {
   description String
   kind        String   @default("open")    // "open" = anyone joins instantly | "closed" = admins approve requests
   whoCanPost  String   @default("members") // "members" | "admins": who can publish plans for the community
-  createdById String
-  createdBy   User     @relation("CreatedCommunities", fields: [createdById], references: [id])
+  createdById String?  // null once the creator deletes their account
+  createdBy   User?    @relation("CreatedCommunities", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
   members     CommunityMember[]
@@ -104,6 +124,8 @@ model Event {
   costNote    String   @default("")         // what each person pays on their own
   hostPledgeAt DateTime                     // host confirmed: not the provider, no money received
   status      String   @default("active")   // "active" | "cancelled" | "hidden"
+  hostRemindedAt      DateTime?
+  hostFeedbackAskedAt DateTime?
   // Optional: plan published on behalf of a community
   communityId String?
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
@@ -113,6 +135,8 @@ model Event {
   participations Participation[]
   messages    Message[]
   reports     Report[]
+  feedback    EventFeedback[]
+  peerFeedback PeerFeedback[]
 
   @@index([startsAt])
   @@index([comuna])
@@ -127,6 +151,8 @@ model Participation {
   status    String   @default("pending") // "pending" | "accepted" | "rejected" | "left"
   note      String   @default("")        // why I'd like to join (review mode)
   viaSurprise Boolean @default(false)
+  remindedAt      DateTime? // 24 h reminder sent
+  feedbackAskedAt DateTime? // "¿Cómo estuvo?" email sent
   createdAt DateTime @default(now())
 
   @@unique([eventId, userId])
@@ -149,7 +175,108 @@ model Report {
   reporterId String
   reporter   User     @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   reason     String
+  status     String   @default("open") // "open" | "actioned" | "dismissed"
+  resolvedAt DateTime?
+  resolvedById String?
   createdAt  DateTime @default(now())
 
   @@unique([eventId, reporterId])
+}
+
+// One-time links sent by email. Only the SHA-256 of the token is stored.
+model AuthToken {
+  id        String    @id // sha256(token)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String    // "verify_email" | "reset_password"
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, purpose])
+}
+
+// Fixed-window rate limiting without extra infrastructure.
+model RateHit {
+  id        BigInt   @id @default(autoincrement())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+// A report about a person (harassment, dating intent, selling, no-show...).
+model UserReport {
+  id           String    @id @default(cuid())
+  reportedId   String
+  reported     User      @relation("ReportsReceived", fields: [reportedId], references: [id], onDelete: Cascade)
+  reporterId   String
+  reporter     User      @relation("ReportsMade", fields: [reporterId], references: [id], onDelete: Cascade)
+  eventId      String?   // the plan where it happened, if any
+  reason       String    // "harassment" | "dating" | "selling" | "fake" | "unsafe" | "noshow" | "other"
+  details      String    @default("")
+  status       String    @default("open") // "open" | "actioned" | "dismissed"
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([reportedId, reporterId])
+  @@index([status, createdAt])
+}
+
+// Blocked people never see each other's plans and can't be at the same plan.
+model Block {
+  blockerId String
+  blocker   User     @relation("Blocking", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlockedBy", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// Every staff decision, kept even if the people involved delete their accounts.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String   // "id.approve" | "id.reject" | "user.suspend" | "user.unsuspend" | "event.hide" | "event.restore" | "report.dismiss"
+  targetType String   // "user" | "event" | "report"
+  targetId   String
+  note       String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// After a plan: did I go, and a private note for the team.
+model EventFeedback {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attended  Boolean
+  comment   String   @default("") // private, only staff see it
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+// After a plan, about each other person: "¿Te volverías a juntar?" and no-shows.
+// Private: never shown to the person it's about. Feeds Sorpréndeme and moderation.
+model PeerFeedback {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  fromId    String
+  from      User     @relation("PeerFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        User     @relation("PeerTo", fields: [toId], references: [id], onDelete: Cascade)
+  meetAgain Boolean?
+  noShow    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, fromId, toId])
+  @@index([toId])
 }

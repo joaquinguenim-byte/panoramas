@@ -3,6 +3,7 @@ import { currentUser } from "@/lib/auth";
 import { getT } from "@/lib/i18n";
 import { logout } from "@/app/actions";
 import LangToggle from "./LangToggle";
+import { isStaff } from "@/lib/staff";
 
 export default async function Header() {
   const [{ t, locale }, user] = await Promise.all([getT(), currentUser()]);
@@ -31,6 +32,11 @@ export default async function Header() {
                 <span className="sm:hidden">📅</span>
                 <span className="hidden sm:inline">{t("nav.mine")}</span>
               </Link>
+              {isStaff(user) && (
+                <Link href="/admin" className="rounded-full px-2 py-1 hover:bg-white" aria-label={t("nav.admin")}>
+                  🛡️
+                </Link>
+              )}
               <Link href="/profile" className="rounded-full px-2 py-1 hover:bg-white" aria-label={t("nav.profile")}>
                 👤
               </Link>
@@ -46,6 +52,14 @@ export default async function Header() {
           <LangToggle next={locale === "es" ? "en" : "es"} label={locale === "es" ? "EN" : "ES"} title={t("common.lang")} />
         </nav>
       </div>
+      {user && !user.emailVerifiedAt && (
+        <div className="border-t border-line bg-sun/10 px-4 py-2 text-center text-sm">
+          {t("verifyEmail.banner", { email: user.email })}{" "}
+          <Link href="/verify-email" className="font-semibold text-sun underline">
+            {t("verifyEmail.bannerLink")}
+          </Link>
+        </div>
+      )}
     </header>
   );
 }

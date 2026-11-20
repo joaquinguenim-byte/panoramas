@@ -38,7 +38,7 @@ export async function currentUser() {
   const id = (await cookies()).get(COOKIE)?.value;
   if (!id) return null;
   const s = await db.session.findUnique({ where: { id }, include: { user: true } });
-  if (!s || s.expiresAt < new Date()) return null;
+  if (!s || s.expiresAt < new Date() || s.user.suspendedAt) return null;
   return s.user;
 }
 export type CurrentUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;

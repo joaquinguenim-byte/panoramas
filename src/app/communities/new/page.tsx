@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { nextVerifyStep } from "@/lib/verification";
 import { createCommunity } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { getT, type MsgKey } from "@/lib/i18n";
@@ -9,11 +10,11 @@ export default async function NewCommunity({ searchParams }: { searchParams: Pro
   const { error } = await searchParams;
   const user = await requireUser("/communities/new");
   const { t } = await getT();
-  if (!user.verifiedAt)
+  if (nextVerifyStep(user))
     return (
       <div className="card mx-auto max-w-md text-center">
         <p>{t("create.mustVerify")}</p>
-        <Link href="/verify" className="btn-primary mt-4">
+        <Link href={nextVerifyStep(user)!} className="btn-primary mt-4">
           {t("verify.title")}
         </Link>
       </div>
