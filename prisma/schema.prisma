@@ -43,6 +43,38 @@ model User {
   participations Participation[]
   messages      Message[]
   reports       Report[]
+  memberships   CommunityMember[]
+  createdCommunities Community[] @relation("CreatedCommunities")
+}
+
+/// A group like "CFA Society Chile" or "Corredores de Ñuñoa" that hosts plans.
+model Community {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  kind        String   @default("open")    // "open" = anyone joins instantly | "closed" = admins approve requests
+  whoCanPost  String   @default("members") // "members" | "admins": who can publish plans for the community
+  createdById String
+  createdBy   User     @relation("CreatedCommunities", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  members     CommunityMember[]
+  events      Event[]
+}
+
+model CommunityMember {
+  id          String    @id @default(cuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String    @default("member") // "admin" | "member"
+  status      String    @default("active") // "active" | "pending" | "rejected"
+  note        String    @default("")       // e.g. "Soy charterholder desde 2019"
+  createdAt   DateTime  @default(now())
+
+  @@unique([communityId, userId])
 }
 
 model Session {
@@ -72,6 +104,10 @@ model Event {
   costNote    String   @default("")         // what each person pays on their own
   hostPledgeAt DateTime                     // host confirmed: not the provider, no money received
   status      String   @default("active")   // "active" | "cancelled" | "hidden"
+  // Optional: plan published on behalf of a community
+  communityId String?
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  visibility  String   @default("public")   // "public" | "community" (only active members see & join)
   createdAt   DateTime @default(now())
 
   participations Participation[]

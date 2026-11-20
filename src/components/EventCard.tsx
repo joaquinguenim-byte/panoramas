@@ -4,7 +4,7 @@ import { CATEGORY_EMOJI } from "@/lib/constants";
 import { formatDate, type MsgKey, type T, type Locale } from "@/lib/i18n";
 import { takenSpots } from "@/lib/events";
 
-type E = Event & { host: Pick<User, "name">; participations: Pick<Participation, "status">[] };
+type E = Event & { host: Pick<User, "name">; participations: Pick<Participation, "status">[]; community?: { name: string } | null };
 
 export default function EventCard({ e, t, locale }: { e: E; t: T; locale: Locale }) {
   const taken = takenSpots(e);
@@ -16,6 +16,12 @@ export default function EventCard({ e, t, locale }: { e: E; t: T; locale: Locale
         </span>
         <span>{formatDate(e.startsAt, locale)}</span>
       </div>
+      {e.community && (
+        <p className="mb-1 text-xs font-semibold text-sea">
+          👥 {e.community.name}
+          {e.visibility === "community" && <span className="ml-1 text-muted">· 🔒 {t("event.membersOnly")}</span>}
+        </p>
+      )}
       <h3 className="text-lg font-bold leading-snug">{e.title}</h3>
       <p className="mt-1 line-clamp-2 text-sm text-muted">{e.description}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">

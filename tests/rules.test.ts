@@ -48,3 +48,16 @@ test("ID document type sniffing", async () => {
   assert.equal(sniffType(Buffer.from("%PDF-1.7 ......")), "pdf");
   assert.equal(sniffType(Buffer.from("<html><script>..")), null);
 });
+
+test("community access rules", async () => {
+  const { slugify, canPost, canSeeEvent } = await import("../src/lib/communities");
+  assert.equal(slugify("CFA Society Chile"), "cfa-society-chile");
+  assert.equal(slugify("Corredores de Ñuñoa"), "corredores-de-nunoa");
+  assert.equal(canPost({ whoCanPost: "members" }, { role: "member", status: "active" }), true);
+  assert.equal(canPost({ whoCanPost: "admins" }, { role: "member", status: "active" }), false);
+  assert.equal(canPost({ whoCanPost: "members" }, { role: "member", status: "pending" }), false);
+  const ev = { visibility: "community", communityId: "c1", hostId: "h" };
+  assert.equal(canSeeEvent(ev, "u", []), false);
+  assert.equal(canSeeEvent(ev, "u", ["c1"]), true);
+  assert.equal(canSeeEvent({ ...ev, visibility: "public" }, undefined, []), true);
+});

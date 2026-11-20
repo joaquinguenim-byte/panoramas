@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function Mine() {
   const user = await requireUser("/me");
   const { t, locale } = await getT();
-  const include = { host: { select: { name: true } }, participations: { select: { status: true } } };
+  const include = { host: { select: { name: true } }, participations: { select: { status: true } }, community: { select: { name: true } } };
   const [hosting, attending] = await Promise.all([
     db.event.findMany({ where: { hostId: user.id }, include, orderBy: { startsAt: "desc" } }),
     db.event.findMany({

@@ -14,6 +14,8 @@ async function main() {
   await db.report.deleteMany();
   await db.participation.deleteMany();
   await db.event.deleteMany();
+  await db.communityMember.deleteMany();
+  await db.community.deleteMany();
   await db.session.deleteMany();
   await db.user.deleteMany();
 
@@ -47,6 +49,45 @@ async function main() {
     { hostId: tomas.id, title: "Limpieza de playa + completos veganos", description: "Dos horas limpiando la playa con guantes y bolsas, después completos veganos frente al mar.", category: "volunteering", comuna: "Concón", venue: "Playa Amarilla", startsAt: inDays(14, 10), capacity: 12, joinMode: "instant", chatMode: "after", shareContacts: true, costNote: "Completos ~$4.000" },
   ];
   for (const e of events) await db.event.create({ data: { ...pledge, ...e } });
+
+  // Communities: one closed professional society, one open neighborhood group.
+  const demo = await db.user.findUniqueOrThrow({ where: { email: "demo@demo.cl" } });
+  const cfa = await db.community.create({
+    data: {
+      slug: "cfa-society-chile",
+      name: "CFA Society Chile",
+      description: "Comunidad de profesionales de inversiones. Panoramas para miembros (almuerzos, charlas, deporte) y algunos abiertos a todos.",
+      kind: "closed",
+      whoCanPost: "members",
+      createdById: camila.id,
+      members: {
+        create: [
+          { userId: camila.id, role: "admin" },
+          { userId: diego.id },
+          { userId: demo.id },
+          { userId: tomas.id, status: "pending", note: "Estoy dando el nivel II este año." },
+        ],
+      },
+    },
+  });
+  const runners = await db.community.create({
+    data: {
+      slug: "corredores-de-nunoa",
+      name: "Corredores de Ñuñoa",
+      description: "Trotes tranquilos por el barrio, todos los ritmos. Después, café.",
+      kind: "open",
+      whoCanPost: "admins",
+      createdById: vale.id,
+      members: { create: [{ userId: vale.id, role: "admin" }, { userId: camila.id }] },
+    },
+  });
+  await db.event.createMany({
+    data: [
+      { ...pledge, hostId: diego.id, communityId: cfa.id, visibility: "community", title: "Almuerzo de networking CFA en El Golf", description: "Almuerzo entre miembros para conocernos fuera de la oficina. Sin presentaciones formales.", category: "food", comuna: "Las Condes", venue: "Restaurante en Isidora Goyenechea", startsAt: inDays(6, 13), capacity: 8, joinMode: "instant", chatMode: "before", costNote: "Tu almuerzo (~$15.000)" },
+      { ...pledge, hostId: camila.id, communityId: cfa.id, visibility: "public", title: "Charla abierta: finanzas personales para no financistas + café", description: "Una miembro de la comunidad explica lo básico de ahorro e inversión, sin vender nada. Después, café y conversación.", category: "tech", comuna: "Providencia", venue: "Café en Av. Providencia", startsAt: inDays(8, 19), capacity: 12, joinMode: "instant", chatMode: "both", costNote: "Tu café" },
+      { ...pledge, hostId: vale.id, communityId: runners.id, visibility: "public", title: "Trote suave por el Parque Juan XXIII + desayuno", description: "5 km a ritmo de conversación y desayuno después.", category: "sports", comuna: "Ñuñoa", venue: "Parque Juan XXIII, entrada por Av. Ossa", startsAt: inDays(3, 8), capacity: 12, joinMode: "instant", chatMode: "both", costNote: "Tu desayuno" },
+    ],
+  });
 
   const ski = await db.event.findFirstOrThrow({ where: { category: "snow" } });
   await db.participation.create({ data: { eventId: ski.id, userId: tomas.id, status: "pending", note: "Nunca he esquiado en Chile, ¡me encantaría!" } });

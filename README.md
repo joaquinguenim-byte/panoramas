@@ -15,7 +15,7 @@ npm run db:setup     # creates the SQLite DB and loads demo data
 npm run dev          # http://localhost:3000
 ```
 
-Demo data includes vegan / animal-friendly plans such as *Voluntariado Santuario Clafiria + Almuerzo Vegano*.
+Demo data includes a closed *CFA Society Chile* community (camila@ is admin, demo@ is a member, tomas@ has a pending request) and an open *Corredores de Ñuñoa*. It also includes vegan / animal-friendly plans such as *Voluntariado Santuario Clafiria + Almuerzo Vegano*.
 
 Demo accounts (password `panoramas123`): `demo@demo.cl`, `camila@demo.cl`, `diego@demo.cl`, `vale@demo.cl`, `tomas@demo.cl`.
 
@@ -33,6 +33,7 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 | Audiences | Open, women only, LGBTQ+ only, LGBTQ+ welcome, vegans only. Based on self-declared profile fields for now. |
 | Sorpréndeme | Picks an upcoming plan you can join that's furthest from your bubble: categories you've never joined or listed, outside your comuna, hosts you've never met. Explains why ("nunca has ido a algo de Playa y surf") and offers another. |
 | ¿Qué organizo? | Plan ideas at `/ideas` and on top of the create form. Ranked by your interests, categories nobody hosts near you, the season (surf in summer, snow in winter) and vegan diet, plus one idea outside your bubble. "Usar esta idea" pre-fills the form. Ideas live in `src/lib/ideas.ts`. |
+| Communities | `/communities`: open (join instantly) or closed (admins approve requests, with a note). Each community chooses who can publish plans (any member or admins only). Plans can be published *as* a community and be **members only** (hidden from feed, Sorpréndeme and direct links for non-members) or **open to everyone** (shown with the community badge). Admins accept/reject requests, promote admins and remove members. Not verified as official organizations yet. |
 | Chat & contacts | Host chooses: no chat, before, after, or both. Optional contact sharing among the group after the plan. |
 | Safety | Keyword screen for dating / adult / illegal / animal-abuse content (ES + EN), report button, auto-hide after 3 reports. |
 | Languages | Spanish first, English toggle (`src/lib/i18n`). |
@@ -49,4 +50,5 @@ The pilot uses **SQLite** so it runs with zero setup. To deploy (e.g. Vercel), s
 - Email/WhatsApp notifications (accepted, new message, reminder).
 - Post-event "would meet again" feedback to tune Sorpréndeme and flag bad actors.
 - Moderation dashboard for reports.
+- Verified / official communities (e.g. a society confirms its admins) and member import by email domain or list.
 - Later: pooled payments with "minimum met or refund".

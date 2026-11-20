@@ -1,7 +1,9 @@
 import type { Event, User } from "@prisma/client";
 import { db } from "./db";
+import { myCommunityIds, visibleTo } from "./communities";
 
 export function eligibleFor(event: Pick<Event, "audience">, user: Pick<User, "gender" | "lgbtq" | "vegan">): boolean {
+  // (community-only access is checked separately with canSeeEvent)
   switch (event.audience) {
     case "women_only":
       return user.gender === "woman";
@@ -40,8 +42,9 @@ export type SurpriseReason =
  * We pick randomly among the best-scoring candidates so it stays a surprise.
  */
 export async function pickSurprise(user: User | null, excludeId?: string) {
+  const ids = await myCommunityIds(user?.id);
   const candidates = await db.event.findMany({
-    where: { ...upcomingWhere(), ...(excludeId ? { id: { not: excludeId } } : {}) },
+    where: { ...upcomingWhere(), ...visibleTo(ids), ...(excludeId ? { id: { not: excludeId } } : {}) },
     include: { participations: true },
   });
 

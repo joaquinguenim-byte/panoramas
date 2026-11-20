@@ -6,14 +6,17 @@ import { AUDIENCES, CATEGORIES, CHAT_MODES, COMUNAS, JOIN_MODES, MAX_CAPACITY, M
 import ErrorNote from "@/components/ErrorNote";
 import IdeaCard from "@/components/IdeaCard";
 import { ideaByKey, suggestIdeas } from "@/lib/ideas";
+import { postableCommunities } from "@/lib/communities";
+import PublishAs from "@/components/PublishAs";
 
-export default async function NewEvent({ searchParams }: { searchParams: Promise<{ error?: string; idea?: string }> }) {
-  const { error, idea: ideaKey } = await searchParams;
+export default async function NewEvent({ searchParams }: { searchParams: Promise<{ error?: string; idea?: string; community?: string }> }) {
+  const { error, idea: ideaKey, community } = await searchParams;
   const user = await requireUser("/events/new");
   const { t, locale } = await getT();
   const idea = ideaByKey(ideaKey);
   const it = idea?.[locale];
   const suggestions = idea ? [] : await suggestIdeas(user, 3);
+  const communities = (await postableCommunities(user.id)).map((c) => ({ id: c.id, name: c.name }));
   if (!user.verifiedAt)
     return (
       <div className="card mx-auto max-w-md text-center">
@@ -59,6 +62,17 @@ export default async function NewEvent({ searchParams }: { searchParams: Promise
         </section>
       )}
       <form action={createEvent} className="card space-y-5">
+        <PublishAs
+          communities={communities}
+          defaultId={communities.some((c) => c.id === community) ? community : undefined}
+          labels={{
+            publishAs: t("event.publishAs"),
+            me: t("event.publishAsMe"),
+            visibility: t("event.visibility"),
+            public: t("event.visibility.public"),
+            community: t("event.visibility.community"),
+          }}
+        />
         <div>
           <label className="label">{t("create.fTitle")}</label>
           <input className="input" name="title" defaultValue={it?.title} required minLength={3} maxLength={100} />
