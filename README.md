@@ -6,14 +6,17 @@ A host proposes a plan (a book club, lunch near the office, a ski day, theatre a
 
 ## Run it locally
 
-Requires Node 20+.
+Requires Node 20+ and Postgres 16 (Docker is the easiest way).
 
 ```bash
 cp .env.example .env
+docker compose up -d # local Postgres on :5432
 npm install
-npm run db:setup     # creates the SQLite DB and loads demo data
+npm run db:setup     # applies migrations and loads demo data
 npm run dev          # http://localhost:3000
 ```
+
+Changing the schema: edit `prisma/schema.prisma`, then `npm run db:migrate -- --name what_changed` and commit the new folder in `prisma/migrations/`. Production runs `npm run db:deploy`.
 
 Demo data includes a closed *CFA Society Chile* community (camila@ is admin, demo@ is a member, tomas@ has a pending request) and an open *Corredores de Ñuñoa*. It also includes vegan / animal-friendly plans such as *Voluntariado Santuario Clafiria + Almuerzo Vegano*.
 
@@ -42,7 +45,7 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 
 Next.js 15 (App Router, server actions) · Tailwind CSS 4 · Prisma. Mobile-first web; the data model and server logic are kept separate from UI so a React Native / Expo app can reuse them later through an API.
 
-The pilot uses **SQLite** so it runs with zero setup. To deploy (e.g. Vercel), switch `provider` in `prisma/schema.prisma` to `postgresql` and point `DATABASE_URL` at Postgres (Supabase, Neon…).
+Database is **Postgres** with Prisma migrations. To deploy (e.g. Vercel + Supabase), set `DATABASE_URL` to the pooled connection string (port 6543, `?pgbouncer=true`) and `DIRECT_URL` to the direct one (port 5432), then run `npm run db:deploy`.
 
 ## Next steps
 

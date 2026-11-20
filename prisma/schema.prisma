@@ -1,14 +1,15 @@
 // Panoramas data model.
-// Pilot uses SQLite so the app runs with zero setup. To move to Postgres
-// (e.g. Supabase / Neon), change `provider` to "postgresql" and set DATABASE_URL.
+// Postgres everywhere (local Docker / Supabase / Neon). DATABASE_URL is the
+// pooled connection used by the app; DIRECT_URL is the direct one used by migrations.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
