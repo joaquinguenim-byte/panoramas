@@ -13,6 +13,7 @@ import { translator, type Locale } from "@/lib/i18n";
 import { deleteIdDoc, saveIdDoc } from "@/lib/idDocs";
 import { REJECT_REASONS, requireStaff } from "@/lib/staff";
 import { audit, blockedIds, USER_REPORT_REASONS } from "@/lib/safety";
+import { notify } from "@/lib/notify";
 import { canPost, canSeeEvent, COMMUNITY_KINDS, myCommunityIds, slugify, WHO_CAN_POST } from "@/lib/communities";
 import { checkContent, REPORT_HIDE_THRESHOLD } from "@/lib/moderation";
 import { chatOpen, eligibleFor, takenSpots } from "@/lib/events";
@@ -214,6 +215,7 @@ export async function updateProfile(formData: FormData) {
       lgbtq: formData.get("lgbtq") === "on",
       vegan: formData.get("vegan") === "on",
       contact: s(formData, "contact").slice(0, 120),
+      emailNotifications: formData.get("emailNotifications") === "on",
     },
   });
   redirect("/profile?saved=1");
@@ -289,11 +291,16 @@ export async function joinEvent(formData: FormData) {
     fail(`/events/${id}`, "blocked");
   const status = event.joinMode === "instant" ? "accepted" : "pending";
   const data = { status, note: s(formData, "note").slice(0, 300), viaSurprise: formData.get("surprise") === "1" };
+  const before = event.participations.find((p) => p.userId === user.id);
   await db.participation.upsert({
     where: { eventId_userId: { eventId: id, userId: user.id } },
     create: { eventId: id, userId: user.id, ...data },
     update: data,
   });
+  if (before?.status !== status) {
+    const host = await db.user.findUnique({ where: { id: event.hostId } });
+    if (host) await notify(status === "accepted" ? "joined" : "applied", host, event, { who: user.name.split(" ")[0] });
+  }
   revalidatePath(`/events/${id}`);
   redirect(`/events/${id}`);
 }
@@ -321,13 +328,22 @@ export async function decideApplication(formData: FormData) {
       fail(`/events/${p.eventId}`, "blockedApplicant");
   }
   await db.participation.update({ where: { id: pid }, data: { status: accept ? "accepted" : "rejected" } });
+  const applicant = await db.user.findUnique({ where: { id: p.userId } });
+  if (applicant) await notify(accept ? "accepted" : "rejected", applicant, p.event);
   redirect(`/events/${p.eventId}`);
 }
 
 export async function cancelEvent(formData: FormData) {
   const id = s(formData, "eventId");
   const user = await requireUser();
-  await db.event.updateMany({ where: { id, hostId: user.id }, data: { status: "cancelled" } });
+  const { count } = await db.event.updateMany({ where: { id, hostId: user.id, status: "active" }, data: { status: "cancelled" } });
+  if (count) {
+    const event = await db.event.findUnique({
+      where: { id },
+      include: { participations: { where: { status: { in: ["accepted", "pending"] } }, include: { user: true } } },
+    });
+    if (event) await notify("cancelled", event.participations.map((p) => p.user), event);
+  }
   redirect(`/events/${id}`);
 }
 
@@ -556,4 +572,36 @@ export async function moderate(formData: FormData) {
   }
   revalidatePath("/admin/reports");
   redirect(`/admin/reports?done=1`);
+}
+
+// ---------- After the plan ----------
+
+/** "¿Fuiste? ¿Te volverías a juntar?" Private: nobody sees what others said about them. */
+export async function submitFeedback(formData: FormData) {
+  const eventId = s(formData, "eventId");
+  const back = `/events/${eventId}/feedback`;
+  const user = await requireUser(back);
+  const event = await db.event.findUnique({ where: { id: eventId }, include: { participations: { where: { status: "accepted" } } } });
+  if (!event || event.startsAt > new Date()) redirect(`/events/${eventId}`);
+  const people = [event.hostId, ...event.participations.map((p) => p.userId)];
+  if (!people.includes(user.id)) redirect(`/events/${eventId}`);
+  const attended = s(formData, "attended") !== "no";
+  const comment = s(formData, "comment").slice(0, 1000);
+  await db.eventFeedback.upsert({
+    where: { eventId_userId: { eventId, userId: user.id } },
+    create: { eventId, userId: user.id, attended, comment },
+    update: { attended, comment },
+  });
+  if (attended) {
+    for (const toId of people.filter((p) => p !== user.id)) {
+      const v = s(formData, `meet_${toId}`);
+      const data = { meetAgain: v === "yes" ? true : v === "no" ? false : null, noShow: v === "noshow" };
+      await db.peerFeedback.upsert({
+        where: { eventId_fromId_toId: { eventId, fromId: user.id, toId } },
+        create: { eventId, fromId: user.id, toId, ...data },
+        update: data,
+      });
+    }
+  }
+  redirect(`${back}?thanks=1`);
 }

@@ -55,8 +55,10 @@ export async function pickSurprise(user: User | null, excludeId?: string) {
     return e ? { event: e, reason: { kind: "random" } as SurpriseReason } : null;
   }
 
-  const avoid = new Set(blocked);
-  pool = pool.filter((e) => !e.participations.some((p) => p.status === "accepted" && avoid.has(p.userId)));
+  // Also skip plans with someone I said I'd rather not meet again.
+  const notAgain = await db.peerFeedback.findMany({ where: { fromId: user.id, meetAgain: false }, select: { toId: true } });
+  const avoid = new Set([...blocked, ...notAgain.map((n) => n.toId)]);
+  pool = pool.filter((e) => !avoid.has(e.hostId) && !e.participations.some((p) => p.status === "accepted" && avoid.has(p.userId)));
   pool = pool.filter((e) => e.hostId !== user.id && eligibleFor(e, user) && !e.participations.some((p) => p.userId === user.id));
   if (!pool.length) return null;
 

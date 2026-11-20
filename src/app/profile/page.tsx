@@ -77,6 +77,13 @@ export default async function Profile({ searchParams }: { searchParams: Promise<
           <input className="input" name="contact" defaultValue={user.contact} placeholder="@instagram" />
           <p className="mt-1 text-xs text-muted">{t("profile.contactHint")}</p>
         </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="emailNotifications" defaultChecked={user.emailNotifications} className="mt-1" />
+          <span>
+            {t("profile.emailNotifications")}
+            <span className="block text-xs text-muted">{t("profile.emailNotificationsHint")}</span>
+          </span>
+        </label>
         <button className="btn-primary w-full">{t("profile.save")}</button>
       </form>
       <div className="mt-6 flex flex-wrap justify-center gap-4">

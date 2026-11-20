@@ -47,6 +47,8 @@ Tests: `npm test` (RUT validation, 18+ check, content rules, Chile time zone).
 | Abuse limits | Per-IP and per-account rate limits on login, sign-up, password reset, ID upload, creating plans and communities, joining, messages and reports (`src/lib/rateLimit.ts`, stored in Postgres). Security headers (HSTS, no framing, nosniff) in `next.config.ts`. |
 | Safety | Keyword screen for dating / adult / illegal / animal-abuse content (ES + EN). Report a plan (auto-hidden after 3 reports) or a **person** (from their profile at `/users/[id]`, reached by tapping a name in a plan), with a reason and private details. **Block** a person: you never see each other's plans, can't be accepted into the same plan, and they're removed from your upcoming plans. Staff work the queue at `/admin/reports` (dismiss, hide/restore a plan, suspend/reactivate a person; suspension signs them out and cancels their upcoming plans) and every decision is in `/admin/audit`. |
 | Your data | Download everything as JSON (`/account/export`) and delete your account (`/account/delete`, password + typing ELIMINAR): profile, plans, messages and ID photo go; upcoming hosted plans are cancelled; communities you created stay. |
+| Notifications | Email to the host on a new join or application; to the applicant when accepted or not; to everyone when a plan is cancelled; a reminder ~24 h before; and "¿Cómo estuvo?" ~3 h after. Can be turned off in the profile. Scheduled ones run from `/api/cron/notifications` (hourly via `vercel.json`, protected by `CRON_SECRET`; hourly crons need Vercel Pro, or call it from any external cron). |
+| After the plan | `/events/[id]/feedback`: did you go, "¿Te volverías a juntar?" per person (yes / rather not / not sure / didn't show up) and a private note for the team. Pending ones show on *Mis panoramas*. Private: nobody sees what was said about them. Sorpréndeme skips plans with people you said you'd rather not meet again. |
 | Languages | Spanish first, English toggle (`src/lib/i18n`). |
 
 ## Stack
@@ -58,7 +60,7 @@ Database is **Postgres** with Prisma migrations. To deploy (e.g. Vercel + Supaba
 ## Next steps
 
 - Real KYC (document + selfie) and verified gender for women-only plans.
-- Email/WhatsApp notifications (accepted, new message, reminder).
-- Post-event "would meet again" feedback to tune Sorpréndeme and flag bad actors.
+- WhatsApp / push notifications and new-message alerts.
+- Use no-show and "would meet again" signals in moderation and Sorpréndeme scoring.
 - Verified / official communities (e.g. a society confirms its admins) and member import by email domain or list.
 - Later: pooled payments with "minimum met or refund".

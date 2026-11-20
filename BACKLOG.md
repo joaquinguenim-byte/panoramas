@@ -2,6 +2,12 @@
 
 Last updated: 2026-11-20. Based on what is on `main` today (web MVP: sign-up with RUT/ID + ID photo, plans with join mode, audiences, area-only location, Sorpréndeme, ¿Qué organizo?, chat modes, keyword moderation, es/en).
 
+## Done so far
+
+| Date | Items |
+| --- | --- |
+| 2026-11-20 | TE-1 Postgres + migrations · TE-2 encrypted private ID storage + staff review · TE-3/TE-4 email (Resend), email verification, password reset, sign out everywhere · TE-5 rate limits · TE-6 security headers · TS-4 report and block people · TS-5 moderation queue + audit log · LE-5 export and delete my data · PR-2 post-plan feedback · notifications (join, application, accepted, cancelled, 24 h reminder, feedback ask) |
+
 ## How to read this
 
 **Phases** (in order):

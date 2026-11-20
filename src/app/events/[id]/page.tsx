@@ -234,6 +234,12 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           </div>
         )}
 
+        {isMember && past && event.status === "active" && (
+          <Link href={`/events/${event.id}/feedback`} className="btn-primary w-full">
+            🙌 {t("feedback.title")}
+          </Link>
+        )}
+
         {isHost && event.status === "active" && !past && (
           <form action={cancelEvent}>
             <input type="hidden" name="eventId" value={event.id} />

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/i18n";
+import Link from "next/link";
 import EventCard from "@/components/EventCard";
 
 export const dynamic = "force-dynamic";
@@ -31,8 +32,31 @@ export default async function Mine() {
       )}
     </section>
   );
+  // Past plans (last 2 weeks) I was part of and haven't given feedback on.
+  const twoWeeksAgo = new Date(Date.now() - 14 * 864e5);
+  const toRate = await db.event.findMany({
+    where: {
+      status: "active",
+      startsAt: { lt: new Date(), gt: twoWeeksAgo },
+      OR: [{ hostId: user.id }, { participations: { some: { userId: user.id, status: "accepted" } } }],
+      feedback: { none: { userId: user.id } },
+      participations: { some: { status: "accepted" } },
+    },
+    select: { id: true, title: true },
+    orderBy: { startsAt: "desc" },
+  });
   return (
     <div className="space-y-8">
+      {toRate.length > 0 && (
+        <section className="card space-y-2 border-sun/40 bg-sun/5">
+          <h2 className="font-bold">🙌 {t("feedback.pending")}</h2>
+          {toRate.map((e) => (
+            <Link key={e.id} href={`/events/${e.id}/feedback`} className="block text-sm font-semibold text-sun underline">
+              {e.title}
+            </Link>
+          ))}
+        </section>
+      )}
       <Section title={t("mine.attending")} list={attending} />
       <Section title={t("mine.hosting")} list={hosting} />
     </div>
